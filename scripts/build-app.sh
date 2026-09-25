@@ -41,7 +41,7 @@ for bundle in "$BIN_DIR"/*.bundle(N); do
   cp -R "$bundle" "$APP/Contents/Resources/"
 done
 # Licenses: ours, and the notices of what's compiled in (Credits.rtf is what the About panel shows).
-cp LICENSE THIRD_PARTY_NOTICES.md Resources/Credits.rtf "$APP/Contents/Resources/"
+cp LICENSE NOTICE THIRD_PARTY_NOTICES.md Resources/Credits.rtf "$APP/Contents/Resources/"
 
 IDENTITY=${VOICEPARTY_SIGN_IDENTITY:-VoiceParty Dev}
 if security find-certificate -c "$IDENTITY" >/dev/null 2>&1; then

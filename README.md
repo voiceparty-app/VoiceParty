@@ -8,7 +8,7 @@
 Private dictation for macOS. Speech recognition and cleanup run on your Mac, in any app.</p>
 
 <p>
-<a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2F6965?style=flat-square"></a>
+<a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-2F6965?style=flat-square"></a>
 <img alt="macOS 26 or later on Apple silicon" src="https://img.shields.io/badge/macOS-26%2B%20%C2%B7%20Apple%20silicon-2F6965?style=flat-square">
 <a href="#privacy"><img alt="Speech recognition and cleanup run on-device" src="https://img.shields.io/badge/speech%20%26%20cleanup-on--device-2F6965?style=flat-square"></a>
 </p>
@@ -53,7 +53,7 @@ Prefer not to hold a key? Double-tap <kbd>fn</kbd> for hands-free mode and press
 - **Keeps your words.** Cleanup is a light copy edit, not a rewrite: fillers and false starts go, self-corrections
   are applied, and numbers, lists and email layout come out right. Your original words stay in history.
 - **Learns your vocabulary.** Names and jargon go in a dictionary that also learns from the words you correct.
-- **Free and open source.** MIT-licensed Swift. Your data lives in one folder on your Mac and moves to another Mac
+- **Free and open source.** Apache-2.0-licensed Swift. Your data lives in one folder on your Mac and moves to another Mac
   as a single file.
 
 ## Features
@@ -282,7 +282,8 @@ Issues and pull requests are welcome. A few ground rules keep VoiceParty what it
 
 - Nothing the user says may leave the Mac. Network access is limited to the Enhancements a user chooses (pinned
   and verified), the local model servers on 127.0.0.1, and the update check.
-- Contributed code must be MIT-compatible; don't copy code from GPL projects.
+- Contributions are accepted under the Apache License 2.0 (section 5). Borrowed code must be compatible with it
+  (MIT, BSD, Apache); don't copy code from GPL projects.
 - When reporting a bug, include your macOS version, your Mac, and the speech engine and cleanup shown in Settings.
   Please don't paste real dictations that contain other people's details; a made-up sentence that shows the
   problem is perfect.
@@ -297,9 +298,13 @@ VoiceParty is built with [GRDB.swift](https://github.com/groue/GRDB.swift) (MIT)
 
 ## License
 
-MIT; see [LICENSE](LICENSE). Third-party components and their licenses are listed in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Downloadable models are covered by their own licenses,
-linked from each one in the app.
+Apache License 2.0; see [LICENSE](LICENSE). If you redistribute VoiceParty or a version based on it, keep the
+[NOTICE](NOTICE) file with it; it credits the original project. Third-party components and their licenses are
+listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Downloadable models are covered by their own
+licenses, linked from each one in the app.
+
+The VoiceParty name and logo aren't covered by the license: if you publish a modified version, please give it
+its own name and logo.
 
 VoiceParty is an independent project. It isn't affiliated with, endorsed by or sponsored by Wispr AI, Inc.
 or Apple. Wispr Flow is a trademark of Wispr AI, Inc.; other names are trademarks of their owners.

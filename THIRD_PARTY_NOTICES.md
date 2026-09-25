@@ -1,6 +1,6 @@
 # Third-party notices
 
-VoiceParty is MIT-licensed (see LICENSE). It is built with the open-source libraries below, whose licenses
+VoiceParty is licensed under the Apache License 2.0 (see LICENSE and NOTICE). It is built with the open-source libraries below, whose licenses
 require their notices to travel with the app. Their full license texts follow.
 
 ## Compiled into VoiceParty
