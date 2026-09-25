@@ -17,37 +17,73 @@ public final class ParakeetEngine: TranscriptionEngine, @unchecked Sendable {
         }
     }
 
+    /// Where `version` is fetched from, at an exact commit: v2's from the Enhancement catalog; Ultra's is pinned
+    /// here for benchmarking. Variants without a pin (v3, redux) are never downloaded.
+    static var pinnedSource: (repository: String, revision: String)? {
+        switch version {
+        case .v2:
+            guard let external = EnhancementCatalog.enhancement(EnhancementID.parakeet)?.external,
+                  let repository = external.repository, let revision = external.revision else { return nil }
+            return (repository, revision)
+        case .ultra: return ("FluidInference/parakeet-ultra-coreml", "95eaa59a39d4394f047a4dc5cce480388a60d1b6")
+        default: return nil
+        }
+    }
+
+    /// FluidAudio's folder name for `version`: `download(to:)` needs a directory with this name.
+    public static var folderName: String {
+        let repo: Repo = switch version {
+        case .v3: .parakeetV3
+        case .ultra: .parakeetUltra
+        case .redux: .parakeetRedux
+        default: .parakeetV2
+        }
+        return repo.folderName
+    }
+
     public let modelsDirectory: URL
     public var id: String { EngineID.parakeet }
     public var displayName: String { "Parakeet (on-device)" }
-    public var supportsVocabulary: Bool { false }
+    /// Only with opt-in dictionary boosting (benchmark only for now).
+    public var supportsVocabulary: Bool { booster != nil }
 
     private let lock = NSLock()
     private var manager: AsrManager?
     private var loading: Task<Void, Error>?
     /// When set, the folder must match this digest before the models are loaded (files changed on disk are never run).
     private let expectedDigest: String?
+    private let booster: VocabularyBooster?
 
-    public init(modelsDirectory: URL, expectedDigest: String? = nil) {
+    public init(modelsDirectory: URL, expectedDigest: String? = nil, booster: VocabularyBooster? = nil) {
         self.modelsDirectory = modelsDirectory
         self.expectedDigest = expectedDigest
+        self.booster = booster
     }
 
     public static func isInstalled(at directory: URL) -> Bool {
         AsrModels.modelsExist(at: directory, version: version)
     }
 
-    /// Downloads the CoreML models from Hugging Face (FluidInference) into `directory`.
+    /// Downloads the CoreML models from Hugging Face (FluidInference) into `directory` (named `folderName`), at the
+    /// pinned commit.
     public static func download(to directory: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard let pin = pinnedSource else { throw TranscriptionError.engineUnavailable("Parakeet \(version) has no pinned revision.") }
         // Always Hugging Face itself (not a REGISTRY_URL from the environment), at the pinned commit.
         ModelRegistry.baseURL = "https://huggingface.co"
-        if let external = EnhancementCatalog.enhancement(EnhancementID.parakeet)?.external, let repo = external.repository,
-           let revision = external.revision {
-            ModelRegistry.revisionOverrides[repo] = revision
-        }
+        ModelRegistry.revisionOverrides[pin.repository] = pin.revision
         _ = try await AsrModels.download(to: directory, version: version) { update in
             progress(update.fractionCompleted)
         }
+    }
+
+    /// Sets FluidAudio's expected revision for this model to the one recorded in `directory` (if any), and keeps it on
+    /// Hugging Face itself, so loading never triggers a download.
+    static func expectRecordedRevision(of directory: URL) {
+        ModelRegistry.baseURL = "https://huggingface.co"
+        guard let repository = pinnedSource?.repository,
+              let recorded = try? String(contentsOf: directory.appending(path: ".fluidaudio-revision"), encoding: .utf8)
+                .trimmingCharacters(in: .whitespacesAndNewlines), !recorded.isEmpty else { return }
+        ModelRegistry.revisionOverrides[repository] = recorded
     }
 
     public func prepare(progress: (@Sendable (Double) -> Void)?) async throws {
@@ -77,6 +113,11 @@ public final class ParakeetEngine: TranscriptionEngine, @unchecked Sendable {
                 throw TranscriptionError.engineUnavailable("Parakeet's files changed on disk, so they weren't loaded. Reinstall it in Enhancements.")
             }
         }
+        // FluidAudio compares the folder's revision marker with the revision it expects before loading, and deletes and
+        // re-downloads on a mismatch. Expect exactly the revision the folder records (its files were just verified
+        // against their digest above); folders from before pinning have no marker and load as before.
+        Self.expectRecordedRevision(of: modelsDirectory)
+        try await booster?.prepare()
         // The first load compiles the models for the Neural Engine (a few seconds); later loads are cached.
         let models = try await AsrModels.load(from: modelsDirectory, version: Self.version)
         let loaded = AsrManager(config: .default, models: models)
@@ -86,7 +127,13 @@ public final class ParakeetEngine: TranscriptionEngine, @unchecked Sendable {
     public func makeSession(vocabulary: [String], naturalFormat: AVAudioFormat?) async throws -> any TranscriptionSession {
         try await prepare(progress: nil)
         guard let manager = lock.withLock({ manager }) else { throw TranscriptionError.assetsUnavailable }
-        return ParakeetSession(manager: manager)
+        let boost = try await booster?.prepared(for: vocabulary)
+        return ParakeetSession { audio in
+            var state = try TdtDecoderState()
+            let result = try await manager.transcribe(audio, decoderState: &state)
+            guard let boost, let timings = result.tokenTimings else { return result.text }
+            return await VocabularyBooster.rescore(result.text, tokenTimings: timings, samples: audio, with: boost)
+        }
     }
 }
 
@@ -95,14 +142,14 @@ final class ParakeetSession: TranscriptionSession, @unchecked Sendable {
     let audioFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16_000, channels: 1, interleaved: false)!
     let partialText: AsyncStream<String>
 
-    private let manager: AsrManager
+    private let transcribe: @Sendable ([Float]) async throws -> String
     private let partialContinuation: AsyncStream<String>.Continuation
     private let lock = NSLock()
     private var samples: [Float] = []
     private var cancelled = false
 
-    init(manager: AsrManager) {
-        self.manager = manager
+    init(transcribe: @escaping @Sendable ([Float]) async throws -> String) {
+        self.transcribe = transcribe
         (partialText, partialContinuation) = AsyncStream.makeStream(of: String.self)
         samples.reserveCapacity(16_000 * 30)
     }
@@ -119,9 +166,7 @@ final class ParakeetSession: TranscriptionSession, @unchecked Sendable {
         guard !lock.withLock({ cancelled }), audio.count > 1_600 else { return "" } // < 0.1 s
         // The model wants at least a second of audio: pad a quick "yes" with silence rather than fail.
         if audio.count < 16_000 { audio += [Float](repeating: 0, count: 16_000 - audio.count) }
-        var state = try TdtDecoderState()
-        let result = try await manager.transcribe(audio, decoderState: &state)
-        return result.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await transcribe(audio).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func cancel() async {

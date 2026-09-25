@@ -125,4 +125,22 @@ public enum EngineID {
     public static let appleDictation = "apple-dictation"
     public static let appleSpeech = "apple-speech"
     public static let parakeet = "parakeet-v2"
+    public static let parakeetUnified = "parakeet-unified"
+}
+
+/// Which speech engine to use after the installed speech models change.
+public enum SpeechEngineChoice {
+    /// Engines of the speech Enhancements, best first.
+    static let speechModels: [(enhancement: String, engine: String)] = [
+        (EnhancementID.parakeetUnified, EngineID.parakeetUnified), (EnhancementID.parakeet, EngineID.parakeet),
+    ]
+
+    /// A model just installed becomes the engine (it's why it was installed). Otherwise the user's choice stands,
+    /// unless its model was removed: then the best model still installed, else Apple's engine.
+    public static func engine(current: String, installed: Set<String>, newlyInstalled: Set<String>) -> String {
+        if let new = speechModels.first(where: { newlyInstalled.contains($0.enhancement) }) { return new.engine }
+        guard let model = speechModels.first(where: { $0.engine == current }) else { return current }
+        if installed.contains(model.enhancement) { return current }
+        return speechModels.first(where: { installed.contains($0.enhancement) })?.engine ?? EngineID.appleSpeech
+    }
 }

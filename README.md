@@ -163,7 +163,7 @@ when installed and again before each use, and run only on your Mac.
 
 | Enhancement | What it adds | Download | License |
 |---|---|---|---|
-| **More accurate speech recognition**<br><sub>NVIDIA Parakeet TDT 0.6B v2, Core ML conversion by FluidInference</sub> | Runs on the Neural Engine and transcribes in about 0.05–0.1 s. In the project's tests on real dictation it misheard fewer words than Apple's engines (10.6% vs 11.4% word error rate). English only. | ~473 MB | [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/) |
+| **More accurate speech recognition**<br><sub>NVIDIA Parakeet Unified EN 0.6B, Core ML conversion by FluidInference</sub> | Runs on the Neural Engine and transcribes a typical dictation in about 0.1 s. In the project's tests on real dictation it misheard fewer words than Apple's engines (9.0% vs 11.4% word error rate). English only. Licensed by NVIDIA Corporation under the NVIDIA Open Model License. | ~614 MB | [NVIDIA Open Model License](https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) |
 | **Fast cleanup**<br><sub>S1-mini by Superwhisper</sub> | A small model made for tidying dictation: cleaner text in about a tenth of a second. Recommended for 8 GB of memory or more. | 484 MB | [Apache-2.0 + naming terms](https://huggingface.co/superwhisper/s1-mini-GGUF/blob/main/LICENSE) |
 | **Smart cleanup for your words & code**<br><sub>Qwen3 4B Instruct 2507 by Alibaba Cloud, GGUF by Unsloth</sub> | Handles "actually, make that six", dictionary names, email layout and code, and writes meeting notes. Uses about 3 GB of memory while loaded; recommended for 16 GB or more. | 2.5 GB | [Apache-2.0](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/blob/main/LICENSE) |
 | **Local AI engine**<br><sub>llama.cpp b11146, installed with either cleanup model</sub> | Runs the cleanup models on your Mac's GPU. It listens only on 127.0.0.1, with a random key per launch. | 11 MB | [MIT](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE) |
@@ -294,7 +294,7 @@ VoiceParty is built with [GRDB.swift](https://github.com/groue/GRDB.swift) (MIT)
 [FluidAudio](https://github.com/FluidInference/FluidAudio) (Apache-2.0). The optional downloads come from
 [llama.cpp](https://github.com/ggml-org/llama.cpp), [S1-mini](https://huggingface.co/superwhisper/s1-mini-GGUF),
 [Qwen3](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF) and
-[NVIDIA Parakeet](https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml). Thank you to their authors.
+[NVIDIA Parakeet](https://huggingface.co/FluidInference/parakeet-unified-en-0.6b-coreml). Thank you to their authors.
 
 ## License
 

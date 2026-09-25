@@ -99,6 +99,10 @@ final class EnhancementManager {
         let folder = Self.root.appending(path: external.folder)
         let id = enhancement.id, name = enhancement.name
         switch enhancement.id {
+        case EnhancementID.parakeetUnified:
+            try await ParakeetUnifiedEngine.download(to: folder) { fraction in
+                Task { @MainActor [weak self] in self?.states[id] = .downloading(progress: fraction, detail: name) }
+            }
         case EnhancementID.parakeet:
             try await ParakeetEngine.download(to: folder) { fraction in
                 Task { @MainActor [weak self] in self?.states[id] = .downloading(progress: fraction, detail: name) }

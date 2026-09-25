@@ -4,6 +4,8 @@
 <dict>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>VoiceParty</string>
 	<key>CFBundleExecutable</key>
 	<string>VoiceParty</string>
 	<key>CFBundleIconFile</key>
@@ -14,34 +16,10 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>VoiceParty</string>
-	<key>CFBundleDisplayName</key>
-	<string>VoiceParty</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>26.0</string>
-	<key>LSUIElement</key>
-	<true/>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.productivity</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>VoicePartyUpdateRepo</key>
-	<string>OWNER/VoiceParty</string>
-	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>The Notetaker names meeting notes after the calendar event you're in and spells attendees' names right. Your calendar stays on this Mac.</string>
-	<key>NSCalendarsUsageDescription</key>
-	<string>The Notetaker names meeting notes after the calendar event you're in and spells attendees' names right. Your calendar stays on this Mac.</string>
-	<key>NSAudioCaptureUsageDescription</key>
-	<string>The Notetaker records your Mac's audio (the other people on a call) to transcribe meetings on this Mac. Nothing is uploaded.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>VoiceParty listens while you hold the dictation key and turns your speech into text on this Mac.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>VoiceParty turns your speech into text on this Mac. It doesn't send your audio anywhere.</string>
+	<string>0.1.1</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -53,5 +31,27 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>The Notetaker records your Mac's audio (the other people on a call) to transcribe meetings on this Mac. Nothing is uploaded.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>The Notetaker names meeting notes after the calendar event you're in and spells attendees' names right. Your calendar stays on this Mac.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>The Notetaker names meeting notes after the calendar event you're in and spells attendees' names right. Your calendar stays on this Mac.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VoiceParty listens while you hold the dictation key and turns your speech into text on this Mac.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VoiceParty turns your speech into text on this Mac. It doesn't send your audio anywhere.</string>
+	<key>VoicePartyUpdateRepo</key>
+	<string>OWNER/VoiceParty</string>
 </dict>
 </plist>

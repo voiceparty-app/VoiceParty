@@ -4,7 +4,9 @@ import VoicePartyCore
 struct EnhancementsView: View {
     @Bindable var app: AppModel
 
-    private var cards: [Enhancement] { EnhancementCatalog.all.filter { !$0.isSupport } }
+    private var cards: [Enhancement] {
+        EnhancementCatalog.cards(installed: Set(EnhancementCatalog.all.map(\.id).filter(app.enhancements.isInstalled)))
+    }
     private var memory: UInt64 { ProcessInfo.processInfo.physicalMemory }
 
     var body: some View {

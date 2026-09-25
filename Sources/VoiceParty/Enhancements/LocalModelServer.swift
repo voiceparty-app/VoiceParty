@@ -150,7 +150,12 @@ final class LocalModelServer {
         let format: LocalLLMPolisher.Format
         if id == EnhancementID.fastCleanup {
             format = .s1mini
-            arguments += ["-c", "2048", "--chat-template-kwargs", #"{"enable_thinking":false}"#]
+            // Cleanup output mostly copies the input, so n-gram speculation (as on the smart tier) cuts median latency
+            // about a third with identical output. `-cram 0`: dictations share no prompt prefix, so llama-server's
+            // prompt cache never helped here and only grew (0.8 → 4.1 GB after ~330 dictations; measured Sept 2026).
+            arguments += ["-c", "2048", "--chat-template-kwargs", #"{"enable_thinking":false}"#, "--top-k", "1",
+                          "--spec-type", "ngram-simple", "--spec-ngram-simple-size-n", "3", "--spec-ngram-simple-size-m", "16",
+                          "-cram", "0"]
         } else {
             format = .instruct
             arguments += ["-c", "4096", "--top-k", "1", "--spec-type", "ngram-simple",

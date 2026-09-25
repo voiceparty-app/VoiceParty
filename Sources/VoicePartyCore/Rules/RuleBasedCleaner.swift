@@ -79,7 +79,7 @@ public struct RuleBasedCleaner: Sendable {
 
     func removeRetractions(_ text: String) -> String {
         guard let re = TextTools.regex(Self.retractionPattern) else { return text }
-        var out = text
+        var out = Self.replaceSameKindCorrections(text)
         var searchFrom = out.startIndex
         while let match = re.firstMatch(in: out, range: NSRange(searchFrom..., in: out)),
               let range = Range(match.range, in: out) {
@@ -111,6 +111,90 @@ public struct RuleBasedCleaner: Sendable {
             searchFrom = out.index(out.startIndex, offsetBy: kept.count)
         }
         return TextTools.capitalizingFirstLetter(out.trimmingCharacters(in: .whitespaces))
+    }
+
+    // MARK: Same-kind corrections
+
+    enum WordKind: Equatable { case day, month, number, name }
+
+    static let days: Set<String> = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+                                    "today", "tomorrow", "tonight", "yesterday"]
+    /// "may" and "march" only count when capitalized (they're also ordinary words).
+    static let months: Set<String> = ["january", "february", "april", "june", "july", "august", "september", "october",
+                                      "november", "december"]
+    static let numberWords: Set<String> = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+                                           "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+                                           "nineteen", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+                                           "hundred", "thousand", "million", "noon", "midnight", "half", "dozen"]
+    /// Words that can be part of a number phrase ("5 pm", "six o'clock") without being a number themselves.
+    static let numberParts: Set<String> = ["am", "pm", "a.m.", "p.m.", "o'clock", "o’clock"]
+    /// Capitalized by accident, never a name ("can And Really").
+    static let notNames: Set<String> = ["i", "and", "the", "a", "an", "so", "but", "or", "um", "uh", "it", "we", "you", "they",
+                                        "he", "she", "this", "that", "really", "ok", "okay", "yes", "no"]
+
+    static func kind(of token: String, capitalizedMidSentence: Bool) -> WordKind? {
+        let lower = token.lowercased()
+        if days.contains(lower) { return .day }
+        if months.contains(lower) || (capitalizedMidSentence && ["may", "march"].contains(lower)) { return .month }
+        if numberWords.contains(lower) || lower.range(of: #"^\d+([:.]\d+)?(am|pm)?$"#, options: .regularExpression) != nil { return .number }
+        if capitalizedMidSentence && !notNames.contains(lower) { return .name }
+        return nil
+    }
+
+    /// "to thursday actually no friday" → "to friday"; "call John actually no Jane" → "call Jane"; "two hundred I mean
+    /// three hundred" → "three hundred". Only when what follows the phrase is the same kind of word as what comes
+    /// right before it (a day, a month, a number, a name), so "I actually no longer…" or "Monday I mean the whole
+    /// week" are left alone. Punctuated retractions ("Meet at five. Actually no, six.") are handled by the rule below.
+    static func replaceSameKindCorrections(_ text: String) -> String {
+        guard let marker = TextTools.regex(#"(?<![\p{L}'’])(?:actually no|no actually|no wait|wait no|i mean|sorry|make that|or rather)(?![\p{L}'’])"#),
+              let word = TextTools.regex(#"[\p{L}\p{N}][\p{L}\p{N}'’:.]*"#) else { return text }
+        var out = text
+        var searchEnd = (out as NSString).length
+        while let match = marker.matches(in: out, range: NSRange(location: 0, length: searchEnd)).last {
+            searchEnd = match.range.location
+            let ns = out as NSString
+            let beforeRange = NSRange(location: 0, length: match.range.location)
+            let before = word.matches(in: out, range: beforeRange)
+            let afterStart = match.range.location + match.range.length
+            let after = word.matches(in: out, range: NSRange(location: afterStart, length: ns.length - afterStart))
+            guard let last = before.last, let first = after.first else { continue }
+            // Only spaces/commas between the last word and the phrase, and between the phrase and the next word.
+            let gapBefore = ns.substring(with: NSRange(location: last.range.upperBound, length: match.range.location - last.range.upperBound))
+            let gapAfter = ns.substring(with: NSRange(location: afterStart, length: first.range.location - afterStart))
+            guard gapBefore.allSatisfy({ $0 == " " || $0 == "," }), gapAfter.allSatisfy({ $0 == " " || $0 == "," }) else { continue }
+            // "five. Actually no, six": a new sentence, handled by the sentence-level rule ("p.m." isn't a sentence end).
+            let lastRaw = ns.substring(with: last.range).lowercased()
+            if lastRaw.hasSuffix("."), !numberParts.contains(lastRaw) { continue }
+
+            func token(_ r: NSTextCheckingResult) -> String { ns.substring(with: r.range).trimmingCharacters(in: CharacterSet(charactersIn: ".:")) }
+            func midSentenceCapital(_ r: NSTextCheckingResult) -> Bool {
+                let t = token(r)
+                guard t.first?.isUppercase == true else { return false }
+                let prefix = ns.substring(to: r.range.location).trimmingCharacters(in: .whitespaces)
+                return !(prefix.isEmpty || ".!?\n".contains(prefix.last!))
+            }
+            func kindOf(_ r: NSTextCheckingResult) -> WordKind? { kind(of: token(r), capitalizedMidSentence: midSentenceCapital(r)) }
+            guard let wanted = kindOf(last), kindOf(first) == wanted else { continue }
+
+            // A number phrase runs over several words ("two hundred", "5 pm"): drop all of it.
+            var start = last
+            if wanted == .number {
+                for r in before.dropLast().reversed() {
+                    let t = token(r).lowercased()
+                    guard kindOf(r) == .number || numberParts.contains(t) else { break }
+                    let gap = ns.substring(with: NSRange(location: r.range.upperBound, length: start.range.location - r.range.upperBound))
+                    guard gap.allSatisfy({ $0 == " " }) else { break }
+                    start = r
+                }
+            }
+            var replacement = ns.substring(from: first.range.location)
+            if wanted == .day || wanted == .month, let initial = replacement.first, initial.isLowercase {
+                replacement = initial.uppercased() + replacement.dropFirst()
+            }
+            out = ns.substring(to: start.range.location) + replacement
+            searchEnd = min(start.range.location, (out as NSString).length)
+        }
+        return out
     }
 
     /// "first X second Y and third Z" → a numbered list (needs first, second and third, in order).

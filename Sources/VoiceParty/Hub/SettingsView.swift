@@ -176,7 +176,9 @@ struct SettingsView: View {
     }
 
     private var engineOptions: [EngineFactory.Option] {
-        app.enhancements.isInstalled(EnhancementID.parakeet) ? [EngineFactory.parakeetOption] + EngineFactory.options : EngineFactory.options
+        (app.enhancements.isInstalled(EnhancementID.parakeetUnified) ? [EngineFactory.parakeetUnifiedOption] : [])
+            + (app.enhancements.isInstalled(EnhancementID.parakeet) ? [EngineFactory.parakeetOption] : [])
+            + EngineFactory.options
     }
 
     private var currentMicName: String {

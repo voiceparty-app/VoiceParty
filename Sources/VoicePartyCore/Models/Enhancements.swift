@@ -23,6 +23,8 @@ public struct Enhancement: Sendable, Identifiable, Equatable {
     public var isSupport: Bool
     /// Installed by a library's own downloader (e.g. FluidAudio for Parakeet) instead of `files`.
     public var external: External?
+    /// Superseded: shown only to people who already have it installed (they can keep using it or remove it).
+    public var isLegacy: Bool
 
     public struct External: Sendable, Equatable {
         /// Folder (relative to the enhancements root) the library installs into.
@@ -52,8 +54,9 @@ public struct Enhancement: Sendable, Identifiable, Equatable {
 
     public init(id: String, name: String, summary: String, details: String, files: [EnhancementFile], requires: [String] = [],
                 credit: String? = nil, licenseName: String? = nil, licenseURL: URL? = nil, recommendedMemory: UInt64 = 0,
-                isSupport: Bool = false, external: External? = nil) {
+                isSupport: Bool = false, external: External? = nil, isLegacy: Bool = false) {
         self.external = external
+        self.isLegacy = isLegacy
         self.licenseName = licenseName
         self.licenseURL = licenseURL
         self.id = id
@@ -114,6 +117,7 @@ public enum EnhancementID {
     public static let fastCleanup = "cleanup-fast"
     public static let strongCleanup = "cleanup-strong"
     public static let parakeet = "speech-parakeet"
+    public static let parakeetUnified = "speech-parakeet-unified"
 }
 
 public enum EnhancementCatalog {
@@ -160,9 +164,23 @@ public enum EnhancementCatalog {
             recommendedMemory: 16 << 30
         ),
         Enhancement(
-            id: EnhancementID.parakeet,
+            id: EnhancementID.parakeetUnified,
             name: "More accurate speech recognition",
             summary: "Fewer misheard words, and it finishes in a twentieth of a second.",
+            details: "NVIDIA's Parakeet Unified speech model running on your Mac's Neural Engine. On real dictation it misheard fewer words than Apple's built-in engines (9.0% vs 11.4% word errors) and transcribes several times faster. English only. Once downloaded, it becomes your speech engine; you can switch back in Settings.",
+            files: [],
+            credit: "NVIDIA Parakeet Unified EN 0.6B, converted for Apple devices by FluidInference. Licensed by NVIDIA Corporation under the NVIDIA Open Model License",
+            licenseName: "NVIDIA Open Model License",
+            licenseURL: URL(string: "https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/"),
+            external: .init(folder: "parakeet-unified-en-0.6b", check: "parakeet_unified_encoder_int8.mlmodelc", approximateBytes: 614_000_000,
+                            repository: "FluidInference/parakeet-unified-en-0.6b-coreml",
+                            revision: "4252711f6f060f9a2f91e5f081a806d7f45eebd8",
+                            treeSHA256: "51af2f722e2539215e7790d92abedbf285f0f684181faf03c511845fc138ca83")
+        ),
+        Enhancement(
+            id: EnhancementID.parakeet,
+            name: "Previous speech model (Parakeet v2)",
+            summary: "Replaced by the more accurate model above. You can keep using it or remove it.",
             details: "NVIDIA's Parakeet speech model running on your Mac's Neural Engine. On real dictation it misheard fewer words than Apple's built-in engines (10.6% vs 11.4% word errors) and transcribes about three times faster. English only. Once downloaded, it becomes your speech engine; you can switch back in Settings.",
             files: [],
             credit: "NVIDIA Parakeet TDT 0.6B v2, converted for Apple devices by FluidInference",
@@ -170,11 +188,17 @@ public enum EnhancementCatalog {
             external: .init(folder: "parakeet-tdt-0.6b-v2", check: "Encoder.mlmodelc", approximateBytes: 473_000_000,
                             repository: "FluidInference/parakeet-tdt-0.6b-v2-coreml",
                             revision: "ee09c569f73759e6d44c9bd16766f477b2b36d39",
-                            treeSHA256: "7922d8f055d2f9f4119fcb01f0991bfa95aca4a0bb289c0bcbcbf1b6b37031ce")
+                            treeSHA256: "7922d8f055d2f9f4119fcb01f0991bfa95aca4a0bb289c0bcbcbf1b6b37031ce"),
+            isLegacy: true
         ),
     ]
 
     public static func enhancement(_ id: String) -> Enhancement? { all.first { $0.id == id } }
+
+    /// The cards on the Enhancements page: not the hidden support pieces, and superseded models only if installed.
+    public static func cards(installed: Set<String>) -> [Enhancement] {
+        all.filter { !$0.isSupport && (!$0.isLegacy || installed.contains($0.id)) }
+    }
 
     /// The enhancement and everything it needs, dependencies first.
     public static func installOrder(for id: String) -> [Enhancement] {

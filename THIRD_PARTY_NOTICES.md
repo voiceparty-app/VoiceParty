@@ -18,7 +18,8 @@ require their notices to travel with the app. Their full license texts follow.
 | llama.cpp (local AI runtime, build b11146) | MIT | https://github.com/ggml-org/llama.cpp |
 | S1-mini by Superwhisper (Fast cleanup) | Apache-2.0 with a naming condition | https://huggingface.co/superwhisper/s1-mini-GGUF |
 | Qwen3-4B-Instruct-2507 by Alibaba Cloud, GGUF by Unsloth (Smart cleanup) | Apache-2.0 | https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF |
-| NVIDIA Parakeet TDT 0.6B v2, Core ML conversion by FluidInference (speech recognition) | CC-BY-4.0 | https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml |
+| NVIDIA Parakeet Unified EN 0.6B, Core ML conversion by FluidInference (speech recognition). Licensed by NVIDIA Corporation under the NVIDIA Open Model License | NVIDIA Open Model License (https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/) | https://huggingface.co/FluidInference/parakeet-unified-en-0.6b-coreml |
+| NVIDIA Parakeet TDT 0.6B v2, Core ML conversion by FluidInference (previous speech model, kept for existing installs) | CC-BY-4.0 | https://huggingface.co/FluidInference/parakeet-tdt-0.6b-v2-coreml |
 
 Each of these is downloaded from its publisher's page above and is covered by its own license there.
 

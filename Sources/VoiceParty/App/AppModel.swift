@@ -105,6 +105,9 @@ final class AppModel {
         if let parakeet = EnhancementCatalog.enhancement(EnhancementID.parakeet)?.external {
             EngineFactory.parakeetDirectory = EnhancementManager.root.appending(path: parakeet.folder)
         }
+        if let unified = EnhancementCatalog.enhancement(EnhancementID.parakeetUnified)?.external {
+            EngineFactory.parakeetUnifiedDirectory = EnhancementManager.root.appending(path: unified.folder)
+        }
         var settings = SettingsFile.load()
         // Older versions kept undone words in plain text: keep only their fingerprints.
         settings.rejectedLearnedWords = settings.rejectedLearnedWords.map {
@@ -135,6 +138,7 @@ final class AppModel {
             self?.syncModelServers()
             self?.syncSpeechEngineWithEnhancements()
         }
+        syncSpeechEngineWithEnhancements() // what's installed at launch (so later installs count as new)
         modelServer.onChange = { [weak self] in self?.modelServerVersion += 1 }
         modelServer.onIntegrityFailure = { [weak self] id in
             let name = EnhancementCatalog.enhancement(id)?.name ?? "A cleanup model"
@@ -183,18 +187,23 @@ final class AppModel {
     }
 
     /// Parakeet installed → use it; removed → back to Apple's engine.
+    /// A speech model installed in this session becomes the engine; a removed one falls back to the best one left.
     func syncSpeechEngineWithEnhancements() {
-        let installed = enhancements.isInstalled(EnhancementID.parakeet)
-        if installed && settings.engine != EngineID.parakeet && !parakeetWasOffered {
-            parakeetWasOffered = true
-            settings.engine = EngineID.parakeet
-            dictationBar.toast("Parakeet is now your speech engine", duration: 3)
-        } else if !installed && settings.engine == EngineID.parakeet {
-            settings.engine = EngineID.appleSpeech
+        let speechModels: Set<String> = [EnhancementID.parakeet, EnhancementID.parakeetUnified]
+        let installed = speechModels.filter(enhancements.isInstalled)
+        // At launch nothing counts as new: the user's saved choice stands.
+        let newlyInstalled = knownSpeechModels.map { installed.subtracting($0) } ?? []
+        knownSpeechModels = installed
+        let engine = SpeechEngineChoice.engine(current: settings.engine, installed: installed, newlyInstalled: newlyInstalled)
+        guard engine != settings.engine else { return }
+        settings.engine = engine
+        if !newlyInstalled.isEmpty {
+            let name = engine == EngineID.parakeetUnified ? "Parakeet Unified" : "Parakeet"
+            dictationBar.toast("\(name) is now your speech engine", duration: 3)
         }
     }
 
-    @ObservationIgnored private var parakeetWasOffered = false
+    @ObservationIgnored private var knownSpeechModels: Set<String>?
 
     func syncModelServers() {
         modelServer.idleUnload = settings.modelMemory.idleUnload
