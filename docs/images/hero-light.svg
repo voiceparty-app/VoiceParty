@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img">
+<style>.s{font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif}.r{font-family:ui-serif, 'New York', 'Iowan Old Style', Charter, Georgia, 'Times New Roman', serif}.m{font-family:ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace}.p{white-space:pre}</style>
+<defs>
+  <linearGradient id="teal" x1="0.25" y1="0.07" x2="0.75" y2="0.93">
+    <stop offset="0" stop-color="#173333"/><stop offset="1" stop-color="#337570"/>
+  </linearGradient>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="160%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.07"/>
+  </filter>
+  <filter id="pillshadow" x="-30%" y="-60%" width="160%" height="260%">
+    <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#000" flood-opacity="0.28"/>
+  </filter>
+  <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+    <stop offset="0" stop-color="#2F6965" stop-opacity="0.13999999999999999"/><stop offset="1" stop-color="#2F6965" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="frame"><rect width="1280" height="400" rx="28"/></clipPath>
+</defs>
+<g clip-path="url(#frame)"><rect width="1280" height="400" fill="#F4F2EE"/><ellipse cx="640" cy="200" rx="360" ry="220" fill="url(#glow)"/></g>
+<rect x="0.5" y="0.5" width="1279" height="399" rx="27.5" fill="none" stroke="#000000" stroke-opacity="0.06"/>
+<rect x="56" y="84" width="420" height="232" rx="18" fill="#FDFDFC" filter="url(#soft)"/><rect x="56.5" y="84.5" width="419" height="231" rx="17.5" fill="none" stroke="#000000" stroke-opacity="0.08"/>
+<g transform="translate(86 112) scale(0.95)" fill="none" stroke="#2F6965" stroke-width="1.8" stroke-linecap="round"><rect x="4.5" y="0" width="7" height="11" rx="3.5" fill="#2F6965" stroke="none"/><path d="M1.5 7.5 A6.5 6.5 0 0 0 14.5 7.5"/><path d="M8 14 V16.5"/></g>
+<text x="112" y="127" class="s" font-size="15" font-weight="600" letter-spacing="1.4" fill="#2F6965">YOU SAY</text>
+<text x="86" y="182" class="s p" xml:space="preserve" font-size="24" font-weight="400" fill="#6F6B65"><tspan fill="#B4640F" text-decoration="line-through">um so</tspan> i think we should, <tspan fill="#B4640F" text-decoration="line-through">uh,</tspan></text>
+<text x="86" y="218" class="s p" xml:space="preserve" font-size="24" font-weight="400" fill="#6F6B65">meet at <tspan fill="#B4640F" text-decoration="line-through">5 actually no</tspan> 6 if</text>
+<text x="86" y="254" class="s p" xml:space="preserve" font-size="24" font-weight="400" fill="#6F6B65">that works</text>
+<rect x="606" y="103.5" width="68" height="54" rx="9" fill="#000000" fill-opacity="0.17600000000000002"/><rect x="606" y="102" width="68" height="54" rx="9" fill="#FDFDFC" stroke="#000000" stroke-opacity="0.14400000000000002"/><text x="640" y="137.6" text-anchor="middle" class="s" font-size="24" font-weight="500" fill="#1F1E1C">fn</text>
+<text x="640" y="182" text-anchor="middle" class="s" font-size="15" font-weight="600" letter-spacing="1.4" fill="#9A968F">HOLD AND TALK</text>
+<g filter="url(#pillshadow)"><rect x="553.6" y="196" width="172.8" height="60" rx="30" fill="#000" fill-opacity="0.94"/></g><rect x="554.6" y="197" width="170.8" height="58" rx="29" fill="none" stroke="#fff" stroke-opacity="0.22" stroke-width="2"/><rect x="591.6" y="219.9" width="4.8" height="12.2" rx="2.4" fill="#fff"/>
+<rect x="600.8" y="221.8" width="4.8" height="8.5" rx="2.4" fill="#fff"/>
+<rect x="610" y="214.5" width="4.8" height="23" rx="2.4" fill="#fff"/>
+<rect x="619.2" y="214.7" width="4.8" height="22.6" rx="2.4" fill="#fff"/>
+<rect x="628.4" y="221.7" width="4.8" height="8.6" rx="2.4" fill="#fff"/>
+<rect x="637.6" y="213.5" width="4.8" height="24.9" rx="2.4" fill="#fff"/>
+<rect x="646.8" y="211" width="4.8" height="29.9" rx="2.4" fill="#fff"/>
+<rect x="656" y="220.7" width="4.8" height="10.5" rx="2.4" fill="#fff"/>
+<rect x="665.2" y="219.2" width="4.8" height="13.7" rx="2.4" fill="#fff"/>
+<rect x="674.4" y="214.9" width="4.8" height="22.2" rx="2.4" fill="#fff"/>
+<rect x="683.6" y="220.3" width="4.8" height="11.4" rx="2.4" fill="#fff"/>
+<path d="M490 226 H541.6" stroke="#9A968F" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
+<path d="M744.4 226 H788" stroke="#9A968F" stroke-width="2" stroke-dasharray="2 7" stroke-linecap="round"/>
+<path d="M534.6 219 L543.6 226 L534.6 233" fill="none" stroke="#9A968F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M780 219 L789 226 L780 233" fill="none" stroke="#9A968F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="640" y="294" text-anchor="middle" class="s" font-size="17" fill="#6F6B65">Let go to insert the text</text>
+<rect x="804" y="84" width="420" height="232" rx="18" fill="#FDFDFC" filter="url(#soft)"/><rect x="804.5" y="84.5" width="419" height="231" rx="17.5" fill="none" stroke="#000000" stroke-opacity="0.08"/>
+<circle cx="836" cy="120" r="5" fill="#000000" fill-opacity="0.16"/>
+<circle cx="852" cy="120" r="5" fill="#000000" fill-opacity="0.16"/>
+<circle cx="868" cy="120" r="5" fill="#000000" fill-opacity="0.16"/>
+<text x="894" y="126" class="s" font-size="15" font-weight="600" letter-spacing="1.4" fill="#2F6965">TYPED WHERE YOU ARE</text>
+<text x="834" y="188" class="s" font-size="26" font-weight="500" fill="#1F1E1C">I think we should meet</text>
+<text x="834" y="226" class="s" font-size="26" font-weight="500" fill="#1F1E1C">at 6 if that works.</text>
+<rect x="1034.8" y="202" width="2.5" height="32" rx="1.2" fill="#2F6965"/>
+<g transform="translate(834 271) scale(0.95)"><path d="M3.5 6.5 V4.8 A3.5 3.5 0 0 1 10.5 4.8 V6.5" fill="none" stroke="#9A968F" stroke-width="1.7"/><rect x="1.5" y="6.5" width="11" height="8.5" rx="2" fill="#9A968F"/></g>
+<text x="853" y="285" class="s" font-size="16" fill="#9A968F">Transcribed and cleaned up on your Mac</text>
+</svg>

@@ -1,0 +1,27 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+.DS_Store
+fixtures/**/*.aiff
+fixtures/**/*.wav
+fixtures/**/*.caf
+.claude/scheduled_tasks.lock
+dist/
+
+# Private to the maintainer (real dictations, names, evaluation data): never part of this repository.
+/Tests
+/fixtures
+/Sources/vp-bench
+/.claude
+/CLAUDE.md
+/AGENTS.md
+/docs/cleanup-experiments.md
+/notes
+/eval
+/scripts/bench.sh
+/scripts/test.sh
+/scripts/export-public.sh
+*.sqlite
+debug-*.json

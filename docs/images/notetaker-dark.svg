@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="760" viewBox="0 0 1280 760" role="img">
+<style>.s{font-family:-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif}.r{font-family:ui-serif, 'New York', 'Iowan Old Style', Charter, Georgia, 'Times New Roman', serif}.m{font-family:ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace}.p{white-space:pre}</style>
+<defs>
+  <linearGradient id="teal" x1="0.25" y1="0.07" x2="0.75" y2="0.93">
+    <stop offset="0" stop-color="#173333"/><stop offset="1" stop-color="#337570"/>
+  </linearGradient>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="160%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.35"/>
+  </filter>
+  <filter id="pillshadow" x="-30%" y="-60%" width="160%" height="260%">
+    <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#000" flood-opacity="0.28"/>
+  </filter>
+  
+</defs>
+<rect width="1280" height="760" rx="28" fill="#1E1D1B"/><rect x="0.5" y="0.5" width="1279" height="759" rx="27.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.07"/>
+<path d="M62 50 L56 56 L62 62" fill="none" stroke="#6BB8B0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="72" y="61" class="s" font-size="15" fill="#6BB8B0">All notes</text>
+<text x="56" y="118" class="r" font-size="40" fill="#EDEBE7">Launch sync</text>
+<text x="56" y="150" class="s" font-size="16" fill="#A7A39C">Oct 1 at 10:00 AM · 32 min · with Priya, Tamaro, Sam</text>
+<rect x="1062" y="92" width="162" height="36" rx="10" fill="#33322F" stroke="#FFFFFF" stroke-opacity="0.09"/>
+<text x="1143" y="115.5" text-anchor="middle" class="s" font-size="15" font-weight="500" fill="#EDEBE7">Copy as Markdown</text>
+<text x="56" y="196" class="s" font-size="13" font-weight="600" letter-spacing="1.4" fill="#A7A39C">SUMMARY</text>
+<rect x="56" y="210" width="700" height="150" rx="14" fill="#272624"/><rect x="56.5" y="210.5" width="699" height="149" rx="13.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
+<text x="80" y="254" class="s" font-size="17" fill="#7D7A74">•</text>
+<text x="100" y="254" class="s" font-size="17" fill="#EDEBE7">The beta build is ready; the onboarding copy is the last open item.</text>
+<text x="80" y="290" class="s" font-size="17" fill="#7D7A74">•</text>
+<text x="100" y="290" class="s" font-size="17" fill="#EDEBE7">Support wants a help page live before the launch email goes out.</text>
+<text x="80" y="326" class="s" font-size="17" fill="#7D7A74">•</text>
+<text x="100" y="326" class="s" font-size="17" fill="#EDEBE7">Testers mostly asked for a shortcuts cheat sheet.</text>
+<text x="56" y="390" class="s" font-size="13" font-weight="600" letter-spacing="1.4" fill="#A7A39C">DECISIONS</text>
+<rect x="56" y="404" width="700" height="114" rx="14" fill="#272624"/><rect x="56.5" y="404.5" width="699" height="113" rx="13.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
+<text x="80" y="448" class="s" font-size="17" fill="#7D7A74">•</text>
+<text x="100" y="448" class="s" font-size="17" fill="#EDEBE7">Move the launch to Thursday.</text>
+<text x="80" y="484" class="s" font-size="17" fill="#7D7A74">•</text>
+<text x="100" y="484" class="s" font-size="17" fill="#EDEBE7">Add the cheat sheet to the help page, not the app.</text>
+<text x="56" y="548" class="s" font-size="13" font-weight="600" letter-spacing="1.4" fill="#A7A39C">ACTION ITEMS</text>
+<rect x="56" y="562" width="700" height="150" rx="14" fill="#272624"/><rect x="56.5" y="562.5" width="699" height="149" rx="13.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
+<rect x="78" y="592" width="15" height="15" rx="4" fill="none" stroke="#7D7A74" stroke-width="1.6"/>
+<text x="106" y="606" class="s" font-size="17" fill="#EDEBE7">Priya: final onboarding copy by Tuesday</text>
+<rect x="78" y="628" width="15" height="15" rx="4" fill="none" stroke="#7D7A74" stroke-width="1.6"/>
+<text x="106" y="642" class="s" font-size="17" fill="#EDEBE7">Tamaro: draft the help page</text>
+<rect x="78" y="664" width="15" height="15" rx="4" fill="none" stroke="#7D7A74" stroke-width="1.6"/>
+<text x="106" y="678" class="s" font-size="17" fill="#EDEBE7">Sam: schedule the launch email for Thursday</text>
+<text x="784" y="196" class="s" font-size="13" font-weight="600" letter-spacing="1.4" fill="#A7A39C">TRANSCRIPT</text>
+<rect x="784" y="210" width="440" height="342" rx="14" fill="#272624"/><rect x="784.5" y="210.5" width="439" height="341" rx="13.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.09"/>
+<text x="806" y="250" class="s" font-size="14" font-weight="600" fill="#6BB8B0">You</text>
+<text x="806" y="270" class="s" font-size="13" fill="#A7A39C" style="font-variant-numeric:tabular-nums">0:04</text>
+<text x="880" y="250" class="s" font-size="16" fill="#EDEBE7">Quick launch check. Where are we on the</text>
+<text x="880" y="273" class="s" font-size="16" fill="#EDEBE7">beta?</text>
+<text x="806" y="312" class="s" font-size="14" font-weight="600" fill="#EDEBE7">Others</text>
+<text x="806" y="332" class="s" font-size="13" fill="#A7A39C" style="font-variant-numeric:tabular-nums">0:11</text>
+<text x="880" y="312" class="s" font-size="16" fill="#EDEBE7">The build is ready. The only open item is the</text>
+<text x="880" y="335" class="s" font-size="16" fill="#EDEBE7">onboarding copy.</text>
+<text x="806" y="374" class="s" font-size="14" font-weight="600" fill="#6BB8B0">You</text>
+<text x="806" y="394" class="s" font-size="13" fill="#A7A39C" style="font-variant-numeric:tabular-nums">0:26</text>
+<text x="880" y="374" class="s" font-size="16" fill="#EDEBE7">Great. Can we still make Wednesday?</text>
+<text x="806" y="436" class="s" font-size="14" font-weight="600" fill="#EDEBE7">Others</text>
+<text x="806" y="456" class="s" font-size="13" fill="#A7A39C" style="font-variant-numeric:tabular-nums">0:34</text>
+<text x="880" y="436" class="s" font-size="16" fill="#EDEBE7">Support needs a help page first, so</text>
+<text x="880" y="459" class="s" font-size="16" fill="#EDEBE7">Thursday is safer.</text>
+<text x="806" y="498" class="s" font-size="14" font-weight="600" fill="#6BB8B0">You</text>
+<text x="806" y="518" class="s" font-size="13" fill="#A7A39C" style="font-variant-numeric:tabular-nums">0:47</text>
+<text x="880" y="498" class="s" font-size="16" fill="#EDEBE7">Thursday it is. Tamaro, can you draft the</text>
+<text x="880" y="521" class="s" font-size="16" fill="#EDEBE7">help page?</text>
+<g transform="translate(786 583) scale(0.85)"><path d="M3.5 6.5 V4.8 A3.5 3.5 0 0 1 10.5 4.8 V6.5" fill="none" stroke="#7D7A74" stroke-width="1.7"/><rect x="1.5" y="6.5" width="11" height="8.5" rx="2" fill="#7D7A74"/></g>
+<text x="806" y="596" class="s" font-size="14" fill="#A7A39C">Transcribed and summarized on this Mac.</text>
+<text x="806" y="618" class="s" font-size="14" fill="#A7A39C">Nothing joins the call.</text>
+</svg>

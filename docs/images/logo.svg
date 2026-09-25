@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img">
+<defs>
+  <linearGradient id="teal" x1="0.25" y1="0.07" x2="0.75" y2="0.93">
+    <stop offset="0" stop-color="#173333"/><stop offset="1" stop-color="#337570"/>
+  </linearGradient>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="160%">
+    <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.07"/>
+  </filter>
+  <filter id="pillshadow" x="-30%" y="-60%" width="160%" height="260%">
+    <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#000" flood-opacity="0.28"/>
+  </filter>
+  
+</defs>
+<g transform="translate(0 0)">
+<rect width="512" height="512" rx="115.2" fill="url(#teal)"/>
+<rect x="2" y="2" width="507.9" height="507.9" rx="115.2" fill="none" stroke="#fff" stroke-opacity="0.12" stroke-width="3.1"/>
+<rect x="75.8" y="209.9" width="31.7" height="92.2" rx="15.9" fill="#fff"/>
+<rect x="130.6" y="169" width="31.7" height="174.1" rx="15.9" fill="#fff"/>
+<rect x="185.3" y="122.9" width="31.7" height="266.2" rx="15.9" fill="#fff"/>
+<rect x="240.1" y="169" width="31.7" height="174.1" rx="15.9" fill="#fff"/>
+<rect x="294.9" y="194.6" width="31.7" height="122.9" rx="15.9" fill="#fff"/>
+<rect x="349.7" y="148.5" width="31.7" height="215" rx="15.9" fill="#fff"/>
+<rect x="404.5" y="204.8" width="31.7" height="102.4" rx="15.9" fill="#fff"/>
+</g>
+</svg>
