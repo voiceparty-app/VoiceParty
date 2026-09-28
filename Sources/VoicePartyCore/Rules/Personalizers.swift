@@ -329,6 +329,32 @@ public enum DriftGuard {
         return true
     }
 
+    /// Emails the model signed with a name nobody said ("John.", "Best regards,\nJohn Doe", "[Your Name]"): those trailing
+    /// lines are removed. A line with any word that was said (or nearly: "pria" → "Priya") stays.
+    public static func removingInventedSignOff(_ output: String, input: String, vocabulary: [String] = []) -> String {
+        var said = Set(TextTools.normalizedTokens(input))
+        for term in VocabularyBuilder.relevant(vocabulary, to: input) { said.formUnion(TextTools.normalizedTokens(term)) }
+        let wasSaid = { (token: String) in
+            said.contains(token) || said.contains { $0.count >= 3 && TextTools.similarity($0, token) >= 0.75 }
+        }
+        var lines = output.components(separatedBy: "\n")
+        var removed = false
+        while lines.count >= 2 {
+            while lines.count >= 2, let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+            guard lines.count >= 2, let last = lines.last?.trimmingCharacters(in: .whitespaces) else { break }
+            let placeholder = last.hasPrefix("[") && last.hasSuffix("]")
+            let words = last.split(separator: " ")
+            let signOffShaped = (1...3).contains(words.count) && last.first?.isUppercase == true
+                && words.allSatisfy { $0.allSatisfy { $0.isLetter || ".,'’-".contains($0) } }
+            guard placeholder || (signOffShaped && !TextTools.normalizedTokens(last).contains(where: wasSaid)) else { break }
+            lines.removeLast()
+            removed = true
+        }
+        guard removed else { return output }
+        while lines.count >= 2, let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
+
     /// Counts a term in a token list, including when it was split ("deal co") or run together.
     static func occurrences(of term: [String], in tokens: [String]) -> Int {
         guard !term.isEmpty, !tokens.isEmpty else { return 0 }

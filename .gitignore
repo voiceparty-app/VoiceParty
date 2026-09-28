@@ -10,6 +10,10 @@ fixtures/**/*.caf
 .claude/scheduled_tasks.lock
 dist/
 
+# Signing identity backup (private key, unencrypted by choice): never committed, never exported.
+/signing/
+.claude/worktrees/
+
 # Private to the maintainer (real dictations, names, evaluation data): never part of this repository.
 /Tests
 /fixtures
@@ -20,6 +24,7 @@ dist/
 /docs/cleanup-experiments.md
 /notes
 /eval
+/signing
 /scripts/bench.sh
 /scripts/test.sh
 /scripts/export-public.sh

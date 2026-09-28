@@ -37,6 +37,7 @@ public final class RoutingPolisher: TextPolisher, @unchecked Sendable {
 
     public var id: String { lock.withLock { lastUsed } }
     public var usesRouting: Bool { true }
+    public var canEscalate: Bool { fast != nil && strong != nil }
     public var hasLocalModel: Bool { fast != nil || strong != nil }
 
     public func prewarm() async {
@@ -44,14 +45,19 @@ public final class RoutingPolisher: TextPolisher, @unchecked Sendable {
         await strong?.prewarm()
     }
 
-    private func candidates(for route: PolishRouter.Route?) -> [any TextPolisher] {
-        let ordered: [(any TextPolisher)?] = route == .fast ? [fast, strong, fallback] : [strong, fast, fallback]
-        return ordered.compactMap { $0 }
+    private func candidates(for request: PolishRequest) -> [any TextPolisher] {
+        PolishRouter.tiers(for: request.route, escalated: request.escalated).compactMap { tier -> (any TextPolisher)? in
+            switch tier {
+            case .fast: fast
+            case .strong: strong
+            case .fallback: fallback
+            }
+        }
     }
 
     public func polish(_ request: PolishRequest) async throws -> String {
         var lastError: Error = CancellationError()
-        for polisher in candidates(for: request.route) {
+        for polisher in candidates(for: request) {
             // Cancelled (the dictation timed out or was abandoned): don't go on to wake the next model.
             try Task.checkCancellation()
             do {

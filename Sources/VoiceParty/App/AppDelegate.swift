@@ -71,18 +71,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Accessibility can be granted at any time in System Settings; pick it up without a relaunch.
+    /// Accessibility can be granted at any time in System Settings; pick it up without a relaunch. While something is
+    /// missing, check often (setup moves on the moment it's granted); once everything is granted, a slow check still
+    /// notices a revocation without waking the Mac every second and a half all day.
     private func watchPermissions() {
-        permissionTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        permissionTimer?.invalidate()
+        let interval: TimeInterval = model.permissions.allGranted ? 10 : 1.5
+        permissionTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let model = self?.model else { return }
+                guard let self, let model = self.model else { return }
                 let now = Permissions.State.current()
                 if now != model.permissions {
+                    let wasGranted = model.permissions.allGranted
                     model.permissions = now
                     if now.accessibility && !model.eventTap.isRunning { model.startHotkeys() }
+                    if now.allGranted != wasGranted { self.watchPermissions() }
                 }
             }
         }
+        permissionTimer?.tolerance = interval / 5
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -118,12 +125,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return
             }
             let category = AppCategory(rawValue: query["category"] ?? "") ?? .other
-            let delay = Double(query["delay"] ?? "") ?? 0
-            model.modelServer.ensureRunning() // as if the dictation key were pressed
+            // live=1: key-down does what a real dictation's does (model loading and warm-up), "speech" lasts as long
+            // as the audio unless `delay` says otherwise, and tiers=0 leaves out the per-tier probes (energy runs).
+            let live = query["live"] == "1"
+            let delay = Double(query["delay"] ?? "") ?? (live ? Double(file.length) / file.processingFormat.sampleRate : 0)
+            if live {
+                model.dictation.warmModels(mode: DictationMode(rawValue: query["mode"] ?? "") ?? .hold, category: category)
+            } else {
+                model.modelServer.ensureRunning() // as if the dictation key were pressed
+            }
             Task {
                 try? await Task.sleep(for: .seconds(delay)) // as if the user were speaking
                 // Never pastes: results go to debug-last.json (E2E tests must not type into the user's apps).
-                await model.dictation.transcribeForTesting(buffer, context: DictationContext(category: category))
+                await model.dictation.transcribeForTesting(buffer, context: DictationContext(category: category),
+                                                           probeTiers: query["tiers"] != "0")
             }
         case "debug/snapshot" where DebugURLs.enabled:
             let directory = URL(fileURLWithPath: query["dir"] ?? NSTemporaryDirectory()).appending(path: "voiceparty-snapshots")
@@ -191,9 +206,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case "debug/hold-models" where DebugURLs.enabled:
             // A benchmark talking to the model servers directly: keep them loaded (no idle unload) until released.
-            model.modelServer.hold()
+            // `pid`: the benchmark's process; its hold ends when it exits, even if it never sends release-models.
+            model.modelServer.hold(.tool(pid: query["pid"].flatMap { Int32($0) }))
         case "debug/release-models" where DebugURLs.enabled:
-            model.modelServer.release()
+            model.modelServer.release(.tool(pid: query["pid"].flatMap { Int32($0) }))
+        case "debug/bar" where DebugURLs.enabled:
+            // The recording bar for `seconds` (default 20) with a speech-like mic level at the rate the mic delivers it
+            // (energy of drawing the waveform; nothing is recorded). `level=0`: a silent room.
+            let seconds = Double(query["seconds"] ?? "") ?? 20
+            let peak = Float(query["level"] ?? "") ?? 0.5
+            if query["state"] == "notes" { // the Notetaker's recording pill instead (nothing is recorded)
+                model.dictationBar.notetakerStartedAt = Date()
+                Task {
+                    try? await Task.sleep(for: .seconds(seconds))
+                    model.dictationBar.notetakerStartedAt = nil
+                }
+                return
+            }
+            model.dictationBar.show(.listening(.hold))
+            Task {
+                let end = Date().addingTimeInterval(seconds)
+                var t = 0.0
+                while Date() < end {
+                    try? await Task.sleep(for: .milliseconds(21)) // 1024 frames at 48 kHz
+                    t += 0.021
+                    model.dictationBar.level = peak * Float(0.5 + 0.5 * sin(t * 3)) * Float(0.7 + 0.3 * sin(t * 17))
+                }
+                model.dictationBar.level = 0
+                model.dictationBar.hide()
+            }
+        case "debug/load-models" where DebugURLs.enabled:
+            // ?which=fast,strong (default both): what a dictation's key-down would load (energy of each model's load).
+            let which = Set((query["which"] ?? "fast,strong").split(separator: ",").map(String.init))
+            model.modelServer.ensureRunning(Set([which.contains("fast") ? EnhancementID.fastCleanup : nil,
+                                                 which.contains("strong") ? EnhancementID.strongCleanup : nil].compactMap { $0 }))
+        case "debug/unload-models" where DebugURLs.enabled:
+            // As if the idle timer had fired (energy tests of cold starts); models held by a meeting or a bench stay.
+            model.modelServer.unloadIfNotHeld()
+        case "debug/memory" where DebugURLs.enabled:
+            // ?free=20 pretends macOS reports 20% free memory (Automatic model memory without filling RAM); ?free=off
+            // uses the real figure again. Writes debug-memory.json: free %, policy, each model's idle time and unload time.
+            if let free = query["free"] { LocalModelServer.debugFreeMemoryPercent = Int(free) }
+            // ?policy=automatic tries a policy in memory only (settings unchanged; a relaunch restores the saved one).
+            if let policy = query["policy"].flatMap(ModelMemoryPolicy.init(rawValue:)) { model.modelServer.memoryPolicy = policy }
+            if let data = try? JSONSerialization.data(withJSONObject: model.modelServer.debugMemoryReport(), options: [.prettyPrinted, .sortedKeys]) {
+                try? data.write(to: Paths.appSupport.appending(path: "debug-memory.json"))
+            }
+        case "debug/model-args" where DebugURLs.enabled:
+            // Flag experiments: ?fast=--poll 0&strong=-t 2 (space-separated; empty = shipped flags). In memory only:
+            // the servers restart with them now and a relaunch forgets them.
+            let split = { (value: String?) in value.map { $0.split(separator: " ").map(String.init) } ?? [] }
+            // env=NAME=value NAME2=value: environment for both servers (NAME=- removes one; set before the restart below).
+            model.modelServer.debugEnvironment = Dictionary(split(query["env"]).compactMap { pair -> (String, String)? in
+                let parts = pair.split(separator: "=", maxSplits: 1).map(String.init)
+                return parts.count == 2 ? (parts[0], parts[1]) : nil
+            }, uniquingKeysWith: { _, last in last })
+            model.modelServer.debugArguments = [EnhancementID.fastCleanup: split(query["fast"]), EnhancementID.strongCleanup: split(query["strong"])]
+            // legacy=1: key-down loads and warms every model every time, as before the energy work (A/B in one session).
+            DictationController.debugLegacyWarmUp = query["legacy"] == "1"
+            if query["load"] == "1" { model.modelServer.ensureRunning() }
         case "debug/calendar" where DebugURLs.enabled:
             if let data = try? JSONSerialization.data(withJSONObject: CalendarReader.accessReport(), options: [.prettyPrinted, .sortedKeys]) {
                 try? data.write(to: Paths.appSupport.appending(path: "debug-calendar.json"))

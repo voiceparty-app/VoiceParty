@@ -12,6 +12,7 @@ public struct RuleBasedCleaner: Sendable {
         var out = text
         out = SpokenQuotes.apply(out)
         out = Self.shortenEtCetera(out)
+        out = Self.fixDashNames(out)
         out = replaceBreakCommand(out, spoken: "paragraph", with: "\n\n")
         out = replaceBreakCommand(out, spoken: "line", with: "\n")
         if resolveRetractions { out = removeRetractions(out) }
@@ -34,6 +35,12 @@ public struct RuleBasedCleaner: Sendable {
     }
 
     // MARK: - Rules
+
+    /// "M dash" / "N dash": the recognizer writes the letter it heard ("em" sounds like M).
+    public static func fixDashNames(_ text: String) -> String {
+        let out = TextTools.replacing(text, pattern: #"\b[Mm] dash(es)?\b"#, with: "em dash$1", caseInsensitive: false)
+        return TextTools.replacing(out, pattern: #"\b[Nn] dash(es)?\b"#, with: "en dash$1", caseInsensitive: false)
+    }
 
     /// "et cetera" → "etc." (never the other way round).
     public static func shortenEtCetera(_ text: String) -> String {

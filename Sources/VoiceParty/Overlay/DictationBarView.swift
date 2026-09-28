@@ -91,8 +91,12 @@ private struct Waveform: View {
     var bars = 11
     var tint: Color = .white
 
+    /// Below this the bars lie flat.
+    static let quietLevel: Float = 0.06
+
     var body: some View {
-        TimelineView(.animation) { timeline in
+        // In silence the bars don't move: the timeline pauses instead of redrawing them every frame.
+        TimelineView(.animation(minimumInterval: nil, paused: level < Self.quietLevel)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             HStack(spacing: 2.2) {
                 ForEach(0..<bars, id: \.self) { i in
@@ -106,7 +110,7 @@ private struct Waveform: View {
     }
 
     private func height(_ i: Int, _ t: TimeInterval) -> CGFloat {
-        let quiet = level < 0.06
+        let quiet = level < Self.quietLevel
         if quiet { return 2.4 }
         let mid = Double(bars - 1) / 2
         let envelope = 1 - abs(Double(i) - mid) / mid * 0.55
@@ -217,13 +221,10 @@ private struct NotetakerPill: View {
     var startedAt: Date
     var onNotepad: () -> Void
     var onStop: () -> Void
-    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 8) {
-            Circle().fill(Color(red: 1, green: 0.36, blue: 0.33)).frame(width: 7, height: 7)
-                .opacity(pulse ? 0.35 : 1)
-                .animation(.easeInOut(duration: 1).repeatForever(autoreverses: true), value: pulse)
+            PulsingDot(color: NSColor(red: 1, green: 0.36, blue: 0.33, alpha: 1)).frame(width: 7, height: 7)
             Text("Notes")
                 .font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
             TimelineView(.periodic(from: .now, by: 1)) { context in
@@ -246,12 +247,59 @@ private struct NotetakerPill: View {
         .padding(.leading, 12).padding(.trailing, 4)
         .frame(height: 28)
         .pill()
-        .onAppear { pulse = true }
     }
 
     static func elapsed(_ seconds: TimeInterval) -> String {
         let s = max(0, Int(seconds))
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// The recording dot's pulse (opacity 1 ↔ 0.35, 1 s each way) as a Core Animation animation: the window server runs it,
+/// so the app doesn't redraw the pill every frame through an hour-long meeting (SwiftUI's repeating animation did:
+/// ~5% of a core, docs/energy.md).
+private struct PulsingDot: NSViewRepresentable {
+    var color: NSColor
+
+    func makeNSView(context: Context) -> PulseView {
+        let view = PulseView()
+        view.color = color
+        return view
+    }
+
+    func updateNSView(_ view: PulseView, context: Context) {
+        view.color = color
+    }
+
+    final class PulseView: NSView {
+        var color: NSColor = .red {
+            didSet { if color != oldValue { needsDisplay = true } }
+        }
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+        }
+
+        required init?(coder: NSCoder) { nil }
+
+        override func draw(_ dirtyRect: NSRect) {
+            color.setFill()
+            NSBezierPath(ovalIn: bounds).fill()
+        }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil, let layer, layer.animation(forKey: "pulse") == nil else { return }
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 1
+            pulse.toValue = 0.35
+            pulse.duration = 1
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            layer.add(pulse, forKey: "pulse")
+        }
     }
 }
 

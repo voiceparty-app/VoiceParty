@@ -32,7 +32,19 @@ public struct StyleFormatter: Sendable {
         let isListItem = lastLine.range(of: #"^\s*(?:[-•*]|\d+[.)])\s"#, options: .regularExpression) != nil
         if isListItem || ".!?:;…)\"'`".contains(last) || last.isEmoji || lastLine.contains("://") { return text }
         guard last.isLetter || last.isNumber else { return text }
+        if Self.isSignature(lastLine, in: text) { return text }
         return text + "."
+    }
+
+    /// A name on its own line under a sign-off ("Thanks,\nPriya") or alone after a blank line ("…\n\nSam"): no period.
+    static func isSignature(_ lastLine: String, in text: String) -> Bool {
+        let words = lastLine.split(separator: " ")
+        guard (1...3).contains(words.count), words.allSatisfy({ $0.first?.isUppercase == true && $0.allSatisfy { $0.isLetter || "'’-".contains($0) } })
+        else { return false }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).dropLast()
+        guard let previous = lines.last else { return false }
+        if previous.trimmingCharacters(in: .whitespaces).isEmpty { return words.count == 1 }
+        return previous.hasSuffix(",")
     }
 
     func dropTrailingPeriod(_ text: String) -> String {

@@ -8,7 +8,9 @@ public struct CleanupScore: Sendable, Equatable {
     public var formatSimilarity: Double
 
     public init(output: String, expected: String) {
-        let hyp = TextTools.normalizedTokens(output), ref = TextTools.normalizedTokens(expected)
+        // An em/en dash separates words ("angles—from"); a hyphen joins them ("well-known").
+        let words = { (text: String) in TextTools.normalizedTokens(text.replacingOccurrences(of: "[—–]", with: " ", options: .regularExpression)) }
+        let hyp = words(output), ref = words(expected)
         wordAccuracy = max(0, 1 - Double(Self.editDistance(ref, hyp)) / Double(max(ref.count, 1)))
         formatSimilarity = TextTools.similarity(output.trimmingCharacters(in: .whitespacesAndNewlines),
                                                 expected.trimmingCharacters(in: .whitespacesAndNewlines))

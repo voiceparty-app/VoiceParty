@@ -15,6 +15,10 @@ public struct PolishRequest: Sendable, Equatable {
     public var preserveIdentifiers: Bool
     /// Which model tier the router picked (nil when routing isn't used).
     public var route: PolishRouter.Route?
+    /// "English is my second language": also fix non-native grammar.
+    public var secondLanguage = false
+    /// A retry after the fast tier's result was rejected (it dropped or garbled content): never the fast tier again.
+    public var escalated = false
 
     public init(
         text: String,
@@ -49,10 +53,13 @@ public protocol TextPolisher: Sendable {
     func answer(_ question: String, context: String?) async throws -> String
     /// Polishers that pick a model per dictation get the router's decision (and `.skip` short-circuits).
     var usesRouting: Bool { get }
+    /// Whether a rejected fast-tier result can be redone by a different, stronger model (both local tiers installed).
+    var canEscalate: Bool { get }
 }
 
 extension TextPolisher {
     public var usesRouting: Bool { false }
+    public var canEscalate: Bool { false }
 }
 
 public struct PipelineResult: Sendable, Equatable {
@@ -77,6 +84,10 @@ public struct DictationPipeline: Sendable {
     /// Whether a word is ordinary English (the app passes Apple's vocabulary). Dictionary names never replace
     /// ordinary words ("brand" is not "Brandt"); without it only a small built-in word list is known.
     public var isEnglishWord: (@Sendable (String) -> Bool)?
+    /// Em/en dashes become plain hyphens (the app passes the "Plain dashes" setting; off here so benchmarks compare as-is).
+    public var plainDashes = false
+    /// "English is my second language": every dictation goes to the smart model, which also fixes non-native grammar.
+    public var secondLanguage = false
 
     /// Longer dictations are cleaned up this many words at a time, in whole sentences.
     public static let chunkWords = 160
@@ -150,8 +161,9 @@ public struct DictationPipeline: Sendable {
                 guard !body.isEmpty else { done += chunk; continue }
                 let before = done.isEmpty ? context.textBeforeCursor : (context.textBeforeCursor ?? "") + done
                 if let polished = await polishChunk(body, with: polisher, terms: terms, style: style, context: context, textBefore: before) {
-                    // Models occasionally leave an "um" in; fillers never belong in the result.
-                    done += cleaner.clean(cleanupLevel == .none ? polished : cleaner.removeFillers(polished), level: .none) + trailing
+                    // Models occasionally leave an "um" or a stutter ("the, the") in; neither belongs in the result.
+                    let tidied = cleanupLevel == .none ? polished : cleaner.collapseStutters(cleaner.removeFillers(polished))
+                    done += cleaner.clean(tidied, level: .none) + trailing
                     anyPolished = true
                 } else {
                     done += cleaner.clean(cleaner.removeRetractions(body), level: cleanupLevel) + trailing
@@ -167,7 +179,7 @@ public struct DictationPipeline: Sendable {
         // Retractions the model didn't resolve (or no model ran): the rules delete the retracted part.
         text = cleaner.removeRetractions(text)
         // Spoken quotes and "et cetera" the model wrote out in words.
-        text = RuleBasedCleaner.shortenEtCetera(SpokenQuotes.apply(text))
+        text = RuleBasedCleaner.fixDashNames(RuleBasedCleaner.shortenEtCetera(SpokenQuotes.apply(text)))
         if !cleanedInChunks {
             text = cleaner.clean(text, level: cleanupLevel)
         }
@@ -190,6 +202,7 @@ public struct DictationPipeline: Sendable {
         let protected = Set(dictionary.filter { $0.replacement == nil }.map(\.phrase))
         let endsWithSnippet = snippets.contains { expanded.used.contains($0.id) && text.hasSuffix($0.expansion) }
         text = StyleFormatter(protectedWords: protected).apply(style, to: text, addTerminalPunctuation: !endsWithSnippet)
+        if plainDashes { text = TextTools.plainDashes(text) }
 
         let rawTokens = TextTools.normalizedTokens(trimmed)
         let corrected = max(0, rawTokens.count - TextTools.lcsLength(rawTokens, TextTools.normalizedTokens(text)))
@@ -200,7 +213,8 @@ public struct DictationPipeline: Sendable {
     }
 
     /// One chunk through the routed model; nil when the router skips it, the model fails or times out,
-    /// or the drift guard rejects the result (the caller then uses the rules).
+    /// or the drift guard rejects the result (the caller then uses the rules). A fast-model result that drifted or
+    /// dropped content gets one retry with the strong model, within the same time limit.
     private func polishChunk(_ text: String, with polisher: any TextPolisher, terms: [String], style: WritingStyle,
                              context: DictationContext, textBefore: String?) async -> String? {
         // Only terms that plausibly occur in this text (fast prompt, no glossary echo).
@@ -210,14 +224,36 @@ public struct DictationPipeline: Sendable {
             appName: context.appName, textBeforeCursor: textBefore.map { String($0.suffix(600)) },
             preserveIdentifiers: context.category == .code || context.category == .terminal
         )
+        request.secondLanguage = secondLanguage
         if polisher.usesRouting {
-            let route = PolishRouter.route(text: text, category: context.category, level: cleanupLevel, relevantVocabulary: vocabulary)
+            let route = PolishRouter.route(text: text, category: context.category, level: cleanupLevel, relevantVocabulary: vocabulary,
+                                           secondLanguage: secondLanguage)
             guard route != .skip else { return nil }
             request.route = route
         }
-        guard let polished = await Self.polish(request, with: polisher, timeout: polishTimeout),
-              DriftGuard.accepts(input: text, output: polished, level: cleanupLevel, vocabulary: vocabulary) else { return nil }
-        return polished
+        let deadline = ContinuousClock.now + polishTimeout
+        guard let polished = await Self.polish(request, with: polisher, timeout: polishTimeout) else { return nil }
+        let accepted = DriftGuard.accepts(input: text, output: polished, level: cleanupLevel, vocabulary: vocabulary)
+        // The fast model sometimes leaves out a clause or a phrase it took for a false start or a spoken command.
+        // With a single model there's nothing stronger to redo it (it would repeat itself), so no check.
+        let escalates = request.route == .fast && polisher.canEscalate
+        let dropped = escalates ? DriftGuard.droppedContent(input: text, output: polished).count : 0
+        if accepted && dropped == 0 { return DriftGuard.removingInventedSignOff(polished, input: text, vocabulary: vocabulary) }
+        // Rejected: the strong model redoes a fast-model result (only these dictations pay for a second call).
+        guard escalates else { return nil }
+        request.route = .strong
+        request.escalated = true
+        let remaining = deadline - ContinuousClock.now
+        var retried: String?
+        if remaining > .zero, let output = await Self.polish(request, with: polisher, timeout: remaining),
+           DriftGuard.accepts(input: text, output: output, level: cleanupLevel, vocabulary: vocabulary) {
+            retried = output
+        }
+        // No usable redo: the rules, which keep every word. Otherwise the one that kept more of what was said: redoing a
+        // long ramble, the strong model can lose more than the word or two the fast one did.
+        guard let retried else { return nil }
+        let keepsMore = !accepted || DriftGuard.droppedContent(input: text, output: retried).count <= dropped
+        return DriftGuard.removingInventedSignOff(keepsMore ? retried : polished, input: text, vocabulary: vocabulary)
     }
 
     /// Programs people type at a prompt. Short utterances are treated as commands too.

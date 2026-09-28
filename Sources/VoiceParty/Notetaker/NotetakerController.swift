@@ -79,6 +79,7 @@ final class NotetakerController {
                 }
             }
         }
+        callTimer?.tolerance = 1 // lets macOS batch this wakeup with others
     }
 
     static var directory: URL {
@@ -143,7 +144,7 @@ final class NotetakerController {
         }
         // Load the notes model now, while the meeting runs, and keep it loaded through the wrap-up: loading ~3 GB
         // onto the GPU at the moment you stop would make wrapping up slow (and can stutter the screen).
-        app.modelServer.hold()
+        app.modelServer.hold(.meeting)
         holdingModel = true
         watchForSilence(mine)
         userNotes = ""
@@ -197,7 +198,7 @@ final class NotetakerController {
         silenceTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.isRecording else { return }
-                self.app.modelServer.ensureRunning()
+                self.app.modelServer.ensureRunning([EnhancementID.strongCleanup]) // the notes model
                 // Keep the notepad saved as you go (a crash or quit mustn't lose it).
                 if var note = self.note, note.userNotes != self.userNotes {
                     note.userNotes = self.userNotes
@@ -391,7 +392,7 @@ final class NotetakerController {
         liveSegments = []
         lastLiveSave = .distantPast
         if holdingModel {
-            app.modelServer.release()
+            app.modelServer.release(.meeting)
             holdingModel = false
         }
         callApp = nil

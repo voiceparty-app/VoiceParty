@@ -17,8 +17,11 @@ public final class LocalLLMPolisher: TextPolisher, @unchecked Sendable {
     private let session: URLSession
     private let longSession: URLSession
     private let apiKey: String?
-    /// Prompt used for `.instruct` models.
-    public var promptConfig: CleanupPrompt.Config = CleanupPrompt.standard
+    /// Prompt used for `.instruct` models (nil: `CleanupPrompt.config(for:)`, which follows the request's settings).
+    public var promptConfig: CleanupPrompt.Config?
+    private let lock = NSLock()
+    /// `prefixKey` of the last request the server completed (what its cache holds; one slot per server).
+    private var cachedPrefix: Int?
 
     public enum LocalLLMError: Error, LocalizedError {
         case notLoopback(String)
@@ -63,15 +66,32 @@ public final class LocalLLMPolisher: TextPolisher, @unchecked Sendable {
     }
 
     public func prewarm() async {
-        // Load the model and cache the long, fixed prefix (system prompt + examples).
-        let request = PolishRequest(text: "ok", level: .light, style: .formal, category: .other)
-        _ = try? await complete(messages: messages(for: request), maxTokens: 1)
+        await prewarm(like: PolishRequest(text: "ok", level: .light, style: .formal, category: .other))
+    }
+
+    /// Loads the model and caches the long, fixed prefix (system prompt + examples) that `request` would send. Skipped
+    /// when the server's last request already had that prefix: it's in the server's cache, and a warm-up request would
+    /// only repeat work (every dictation used to send one to every model).
+    public func prewarm(like request: PolishRequest, evenIfCached: Bool = false) async {
+        let messages = messages(for: request)
+        guard evenIfCached || lock.withLock({ cachedPrefix }) != Self.prefixKey(messages) else { return }
+        _ = try? await complete(messages: messages, maxTokens: 1)
+    }
+
+    /// Everything but the last message: the part the server can reuse from its cache.
+    static func prefixKey(_ messages: [(role: String, content: String)]) -> Int {
+        var hasher = Hasher()
+        for message in messages.dropLast() {
+            hasher.combine(message.role)
+            hasher.combine(message.content)
+        }
+        return hasher.finalize()
     }
 
     func messages(for request: PolishRequest) -> [(role: String, content: String)] {
         switch format {
         case .instruct:
-            return CleanupPrompt.messages(for: request, config: promptConfig)
+            return CleanupPrompt.messages(for: request, config: promptConfig ?? CleanupPrompt.config(for: request))
         case .s1mini:
             return [("system", S1MiniFormat.systemPrompt),
                     ("user", S1MiniFormat.userMessage(transcript: request.text, style: request.style, category: request.category))]
@@ -128,9 +148,11 @@ public final class LocalLLMPolisher: TextPolisher, @unchecked Sendable {
             "chat_template_kwargs": ["enable_thinking": false],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        lock.withLock { cachedPrefix = nil } // unknown until this one completes
         let (data, response) = try await (long ? longSession : session).data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else { throw LocalLLMError.badResponse(status, String(decoding: data, as: UTF8.self)) }
+        lock.withLock { cachedPrefix = Self.prefixKey(messages) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],

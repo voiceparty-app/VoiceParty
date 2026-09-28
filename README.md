@@ -74,6 +74,8 @@ Prefer not to hold a key? Double-tap <kbd>fn</kbd> for hands-free mode and press
   ([Enhancements](#enhancements)). Built-in rules take over when neither is available.
 - **Cleanup level and per-app styles.** Choose None, Light or Medium editing, and a style (Formal, Casual, Very
   casual, Excited!) for each kind of app: personal messages, work chat, email and everything else.
+- **English as a second language.** An optional setting sends every dictation to Smart cleanup, which then also
+  fixes non-native grammar ("I am agree", "since two years"). It's a little slower, so it's off by default.
 - **Context aware.** Reads a little text around your cursor, locally, to spell names right. Reading the screen
   for names is optional and off by default.
 - **Code aware.** Say a file name in Cursor or Windsurf and it's written as `@file.tsx`; optionally spells
@@ -168,8 +170,10 @@ when installed and again before each use, and run only on your Mac.
 | **Smart cleanup for your words & code**<br><sub>Qwen3 4B Instruct 2507 by Alibaba Cloud, GGUF by Unsloth</sub> | Handles "actually, make that six", dictionary names, email layout and code, and writes meeting notes. Uses about 3 GB of memory while loaded; recommended for 16 GB or more. | 2.5 GB | [Apache-2.0](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/blob/main/LICENSE) |
 | **Local AI engine**<br><sub>llama.cpp b11146, installed with either cleanup model</sub> | Runs the cleanup models on your Mac's GPU. It listens only on 127.0.0.1, with a random key per launch. | 11 MB | [MIT](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE) |
 
-With the local models, cleanup typically takes 0.1–0.2 s. To free memory, the default "Load when I dictate" setting
-unloads them after 5 idle minutes; they reload in about a second.
+With the local models, cleanup typically takes 0.1–0.2 s. The default "Automatic" model memory keeps them loaded up to
+30 idle minutes (the smart model 5 on Macs with less than 32 GB) and frees them sooner when your Mac runs low on memory,
+down to a minute, say while you run a big build next to it. Keeping a model loaded costs next to no energy; reloading
+it takes about a second.
 
 ## Privacy
 

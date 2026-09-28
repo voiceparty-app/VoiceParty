@@ -126,10 +126,17 @@ struct SettingsView: View {
                 SettingsRow(title: "AI cleanup",
                             detail: app.localCleanupSummary.map { "Using \($0.prefix(1).lowercased() + $0.dropFirst()). They load when you start dictating." }
                                 ?? app.dictation.polisher.unavailableReason
-                                ?? "Using \(app.cleanupSummary). Add faster local models under Enhancements.",
-                            showDivider: false) {
+                                ?? "Using \(app.cleanupSummary). Add faster local models under Enhancements.") {
                     Toggle("", isOn: $app.settings.useLanguageModel).toggleStyle(.switch).labelsHidden()
                 }
+                toggleRow("Plain dashes", $app.settings.plainDashes,
+                          detail: "Writes a regular dash (-) instead of an em dash (—), which many readers see as a sign of AI-written text.")
+                toggleRow("English is my second language", $app.settings.secondLanguage,
+                          detail: app.enhancements.isInstalled(EnhancementID.strongCleanup)
+                              ? "Every dictation goes to the smart model, which also fixes grammar like \"I am agree\" or \"since two years\". About 0.2 s slower."
+                              : "Fixes grammar like \"I am agree\" or \"since two years\". Needs Smart cleanup (Enhancements).",
+                          last: true)
+                    .disabled(!app.enhancements.isInstalled(EnhancementID.strongCleanup) || !app.settings.useLanguageModel)
             }
             SettingsGroup {
                 SettingsRow(title: "Updates", detail: updateDetail) {
@@ -146,9 +153,7 @@ struct SettingsView: View {
                 .help("Checks GitHub once a day for a newer version. Only the version number is fetched; nothing about you is sent.")
             }
             SettingsGroup {
-                SettingsRow(title: "Model memory",
-                            detail: "Downloaded AI models use about 1–3 GB while loaded. \"Load when I dictate\" frees it after 5 idle minutes; models reload in about a second when you start talking.",
-                            showDivider: false) {
+                SettingsRow(title: "Model memory", detail: modelMemoryDetail, showDivider: false) {
                     Picker("", selection: $app.settings.modelMemory) {
                         ForEach(ModelMemoryPolicy.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
@@ -322,6 +327,22 @@ struct SettingsView: View {
                     Button("Import") { importWispr() }.buttonStyle(SecondaryButtonStyle())
                 }
             }
+        }
+    }
+
+    private var modelMemoryDetail: String {
+        let longest = ModelMemoryPolicy.loadWhenDictating.idleUnload(for: .strong) == .seconds(300)
+            ? "30 idle minutes (the smart model 5)" : "30 idle minutes"
+        switch app.settings.modelMemory {
+        case .automatic:
+            return "Downloaded AI models use about 1–3 GB while loaded. Automatic keeps them up to \(longest) and frees them sooner "
+                + "when your Mac runs low on memory, down to a minute. They reload in about a second when you start talking."
+        case .loadWhenDictating:
+            return "Downloaded AI models use about 1–3 GB while loaded. They're freed after \(longest) and reload in about a second "
+                + "when you start talking."
+        case .alwaysReady:
+            return "Downloaded AI models use about 1–3 GB, kept loaded for the fastest cleanup. They're still freed if macOS runs "
+                + "short of memory."
         }
     }
 

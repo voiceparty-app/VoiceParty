@@ -57,6 +57,7 @@ enum DebugSnapshots {
             ("toast", .toast(.init(message: "Transcript cancelled", actionTitle: "Undo"))),
             ("toast-error", .toast(.init(message: "Select a text box first", actionTitle: "Copy", style: .error))),
             ("answer", .answer(.init(question: "What's the capital of France?", text: "Paris is the capital of France."))),
+            ("notetaking", .notetaking),
         ]
         await capture(DictationBarView(model: bar), size: NSSize(width: 480, height: 260), dark: dark, background: .gray) { host in
             for (name, phase) in phases {

@@ -36,6 +36,11 @@ public struct AppSettings: Codable, Equatable, Sendable {
     public var showNotepad = true
     /// The one-time explanation of recording consent was confirmed on this Mac.
     public var notetakerConsentAcknowledged = false
+    /// Write a plain hyphen instead of em/en dashes (many readers take "—" as a sign of AI-written text).
+    public var plainDashes = true
+    /// "English is my second language": every dictation goes to the smart cleanup model, which also fixes non-native
+    /// grammar ("I am agree", "since two years"). About 0.2 s slower per dictation, so off by default.
+    public var secondLanguage = false
     /// Once a day, ask GitHub for the latest version number (nothing about you is sent).
     public var checkForUpdates = true
     public var lastUpdateCheck: Date?
@@ -51,7 +56,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public var hasCompletedOnboarding = false
     /// Local AI models: keep loaded (fastest) or load on key-press and unload when idle (saves memory).
-    public var modelMemory: ModelMemoryPolicy = .loadWhenDictating
+    public var modelMemory: ModelMemoryPolicy = .automatic
 
     public init() {}
 
@@ -107,6 +112,8 @@ public struct AppSettings: Codable, Equatable, Sendable {
         useCalendarForNotes = v(.useCalendarForNotes, d.useCalendarForNotes)
         showNotepad = v(.showNotepad, d.showNotepad)
         notetakerConsentAcknowledged = v(.notetakerConsentAcknowledged, d.notetakerConsentAcknowledged)
+        plainDashes = v(.plainDashes, d.plainDashes)
+        secondLanguage = v(.secondLanguage, d.secondLanguage)
         checkForUpdates = v(.checkForUpdates, d.checkForUpdates)
         lastUpdateCheck = v(.lastUpdateCheck, d.lastUpdateCheck)
         rejectedLearnedWords = v(.rejectedLearnedWords, d.rejectedLearnedWords)

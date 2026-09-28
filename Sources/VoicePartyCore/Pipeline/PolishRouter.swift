@@ -6,6 +6,15 @@ import Foundation
 /// layout, prompts to AI apps or heavier editing are involved.
 public enum PolishRouter {
     public enum Route: Equatable, Sendable { case skip, fast, strong }
+    /// The models behind a routing polisher: the fast and strong local models, and a fallback (Apple's model).
+    public enum Tier: Equatable, Sendable { case fast, strong, fallback }
+
+    /// The order a routing polisher tries its models in: the routed tier first, then the others as stand-ins when one
+    /// is missing or fails. A retry after the fast model's result was rejected (`escalated`) never goes back to it.
+    public static func tiers(for route: Route?, escalated: Bool = false) -> [Tier] {
+        if escalated { return [.strong, .fallback] }
+        return route == .fast ? [.fast, .strong, .fallback] : [.strong, .fast, .fallback]
+    }
 
     static let fillers: Set<String> = ["um", "uh", "umm", "uhm", "erm", "er", "hmm", "mm", "ah"]
     static let cuePhrases = [
@@ -17,9 +26,13 @@ public enum PolishRouter {
         "hundred", "thousand", "million", "billion", "percent", "dollars", "thirty", "fifteen", "forty-five", "o'clock",
     ]
 
-    public static func route(text: String, category: AppCategory, level: CleanupLevel, relevantVocabulary: [String]) -> Route {
+    /// - Parameter secondLanguage: every dictation goes to the strong model, which fixes non-native grammar: text that
+    ///   looks clean often isn't ("Yesterday I go to the office."), and the fast model can't fix grammar.
+    public static func route(text: String, category: AppCategory, level: CleanupLevel, relevantVocabulary: [String],
+                             secondLanguage: Bool = false) -> Route {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .skip }
+        if secondLanguage { return .strong }
         if needsStrong(category: category, level: level, relevantVocabulary: relevantVocabulary) || hasCorrection(trimmed) {
             return needsWork(trimmed) || category == .email || level == .medium || !relevantVocabulary.isEmpty ? .strong : .skip
         }

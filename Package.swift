@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS("26.0")],
     products: [
         .executable(name: "VoiceParty", targets: ["VoiceParty"]),
+        .executable(name: "vp-energy", targets: ["vp-energy"]),
         .library(name: "VoicePartyCore", targets: ["VoicePartyCore"]),
     ],
     dependencies: [
@@ -31,5 +32,7 @@ let package = Package(
             dependencies: ["VoicePartyCore", "VoicePartyEngines"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // CLI energy meter: the app's coalition (app + model servers) CPU/GPU/ANE energy, wakeups, memory. No sudo.
+        .executableTarget(name: "vp-energy"),
     ]
 )

@@ -88,9 +88,11 @@ final class DictationController {
         generation += 1
         let gen = generation
         state = .recording(mode)
-        targetPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        // Load local models now: they're ready by the time you finish speaking.
-        app.modelServer.ensureRunning()
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        targetPID = frontmost?.processIdentifier
+        // The app's category from its bundle alone (a browser's site isn't known yet: "other", which warms every model).
+        warmModels(mode: mode, category: AppCategorizer.category(bundleID: frontmost?.bundleIdentifier, url: nil,
+                                                                 overrides: settings.appCategoryOverrides))
 
         // Show the bar and play the sound a beat later, so fn+arrow / fn+F-key shortcuts that
         // cancel within ~120 ms don't flash the UI.
@@ -130,11 +132,6 @@ final class DictationController {
         snapshotTask = Task.detached(priority: .userInitiated) {
             ContextReader.snapshot(includeText: includeText, overrides: overrides)
         }
-        if settings.useLanguageModel && settings.cleanupLevel != .none || mode == .command {
-            let polisher = polisher
-            Task.detached { await polisher.prewarm() }
-        }
-
         // The mic starts on its own queue (CoreAudio can block while Bluetooth devices renegotiate); the
         // recording itself begins now, so nothing said after the key-press is lost.
         let token = audio.beginRecording(deviceUID: settings.microphoneUID)
@@ -175,6 +172,41 @@ final class DictationController {
         }
     }
 
+    /// Key-down: load the cleanup models this dictation may use, so they're ready by the time you finish speaking — and
+    /// only those: a cold load costs several joules (debug/dictate?live=1 runs this too, so energy and latency tests see
+    /// what a real dictation does).
+    func warmModels(mode: DictationMode, category: AppCategory) {
+        let server = app.modelServer
+        #if VOICEPARTY_DEBUG_URLS
+        if Self.debugLegacyWarmUp { // before/after energy runs in one session: load everything, warm everything, always
+            server.ensureRunning()
+            guard settings.useLanguageModel && settings.cleanupLevel != .none || mode == .command else { return }
+            let template = PolishRequest(text: "ok", level: .light, style: .formal, category: .other)
+            for polisher in [server.fast, server.strong].compactMap({ $0 }) {
+                Task.detached { await polisher.prewarm(like: template, evenIfCached: true) }
+            }
+            return
+        }
+        #endif
+        let plan = ModelWarmup.plan(mode: mode, category: category, level: settings.cleanupLevel, useModel: settings.useLanguageModel,
+                                    secondLanguage: settings.secondLanguage, autoTransform: settings.autoApplyTransform != nil,
+                                    strongInstalled: server.isInstalled.strong)
+        server.ensureRunning(Set([plan.fast ? EnhancementID.fastCleanup : nil, plan.strong ? EnhancementID.strongCleanup : nil].compactMap { $0 }))
+        // A loaded model already holds the cleanup instructions in its cache (from loading, or the last dictation): the
+        // warm-up request only runs when they're not the ones this dictation will send. Command Mode sends other ones.
+        guard mode != .command else { return }
+        var template = PolishRequest(text: "ok", level: .light, style: .formal, category: .other)
+        template.secondLanguage = settings.secondLanguage && server.isInstalled.strong
+        for polisher in [plan.fast ? server.fast : nil, plan.strong ? server.strong : nil].compactMap({ $0 }) {
+            Task.detached { await polisher.prewarm(like: template) }
+        }
+    }
+
+    #if VOICEPARTY_DEBUG_URLS
+    /// Debug (debug/model-args?legacy=1): key-down as before Sept 2026's energy work, for A/B runs in one session.
+    static var debugLegacyWarmUp = false
+    #endif
+
     func lockHandsFree() {
         guard case .recording = state else { return }
         state = .recording(.handsFree)
@@ -186,6 +218,7 @@ final class DictationController {
         guard case .recording = state else { return }
         state = .recording(.command)
         dictationBar.show(.listening(.command))
+        warmModels(mode: .command, category: .other) // instructions go to the strong model
     }
 
     func finish() {
@@ -326,6 +359,7 @@ final class DictationController {
            polisher.isAvailable, TextTools.wordCount(result.text) >= 3,
            let rewritten = await Self.autoTransform(result.text, with: polisher, instructions: TransformPrompt.instructions(for: transform)),
            !rewritten.isEmpty {
+            let rewritten = dashesAsSet(rewritten)
             app.lastTransformRun = TransformRun(name: transform.name, instruction: transform.summary, before: result.text, after: rewritten)
             result.text = rewritten
         }
@@ -401,8 +435,10 @@ final class DictationController {
     }
 
     /// Debug/E2E: full pipeline on an audio buffer, no paste; the result is written to debug-last.json.
-    func transcribeForTesting(_ buffer: AVAudioPCMBuffer, context: DictationContext) async {
+    /// `probeTiers`: also run each model tier on its own (off for energy/latency runs: it's extra model work).
+    func transcribeForTesting(_ buffer: AVAudioPCMBuffer, context: DictationContext, probeTiers: Bool = true) async {
         let started = ContinuousClock.now
+        let readyAtKeyUp = ["fast": app.modelServer.fast != nil, "strong": app.modelServer.strong != nil]
         do {
             let vocabulary = VocabularyBuilder.engineHints(dictionary: app.dictionary, contextTerms: [])
             let session = try await engine.makeSession(vocabulary: vocabulary, naturalFormat: buffer.format)
@@ -417,16 +453,18 @@ final class DictationController {
             // Each model tier on its own, so a silent fallback to rules is explainable.
             var tiers: [String: String] = [:]
             let probe = PolishRequest(text: raw, level: settings.cleanupLevel, style: result.style, category: context.category)
-            for (name, tier) in [("fast", polisher.fast), ("strong", polisher.strong)] where TextTools.wordCount(raw) <= DictationPipeline.chunkWords {
+            for (name, tier) in [("fast", polisher.fast), ("strong", polisher.strong)] where probeTiers && TextTools.wordCount(raw) <= DictationPipeline.chunkWords {
                 guard let tier else { tiers[name] = "not ready"; continue }
                 do { tiers[name] = try await tier.polish(probe) } catch { tiers[name] = "error: \(error)" }
             }
             let report: [String: Any] = [
                 "tiers": tiers,
-                "route": "\(PolishRouter.route(text: raw, category: context.category, level: settings.cleanupLevel, relevantVocabulary: []))",
+                "route": "\(PolishRouter.route(text: raw, category: context.category, level: settings.cleanupLevel, relevantVocabulary: [], secondLanguage: pipeline.secondLanguage))",
                 "raw": raw, "text": result.text, "status": result.status.rawValue, "polisher": result.polisherID ?? "rules",
                 "asrMs": (asrDone - started).components.attoseconds / 1_000_000_000_000_000 + (asrDone - started).components.seconds * 1000,
                 "cleanupMs": (cleanupDone - asrDone).components.attoseconds / 1_000_000_000_000_000 + (cleanupDone - asrDone).components.seconds * 1000,
+                "keyUpToTextMs": (cleanupDone - started).components.attoseconds / 1_000_000_000_000_000 + (cleanupDone - started).components.seconds * 1000,
+                "readyAtKeyUp": readyAtKeyUp,
                 "engine": polisher.summary,
                 "asrEngine": engine.id,
             ]
@@ -487,7 +525,15 @@ final class DictationController {
         var pipeline = DictationPipeline(snippets: app.snippets, dictionary: app.dictionary, cleanupLevel: cleanupLevel,
                                          styles: app.settings.styles, polisher: useModel && polisher.isAvailable ? polisher : nil)
         pipeline.isEnglishWord = TermExtractor.isEnglishWord
+        pipeline.plainDashes = app.settings.plainDashes
+        // Without the smart model every dictation would go to the fast one, which is slower than skipping and can't fix grammar.
+        pipeline.secondLanguage = app.settings.secondLanguage && polisher.strong != nil
         return pipeline
+    }
+
+    /// Model output that goes straight to the user (transforms, Command Mode) follows the "Plain dashes" setting too.
+    private func dashesAsSet(_ text: String) -> String {
+        settings.plainDashes ? TextTools.plainDashes(text) : text
     }
 
     private func codeFormatter(for context: DictationContext) -> CodeFormatter? {
@@ -522,13 +568,13 @@ final class DictationController {
             var selection = snapshot.context.selectedText
             if selection == nil { selection = await SelectionReader.read() }
             if let selection, !selection.isEmpty {
-                let rewritten = try await Self.withTimeout(Self.modelTaskLimit) { [polisher = self.polisher] in try await polisher.transform(selection, instructions: instruction) }
+                let rewritten = dashesAsSet(try await Self.withTimeout(Self.modelTaskLimit) { [polisher = self.polisher] in try await polisher.transform(selection, instructions: instruction) })
                 await inserter.insert(rewritten)
                 app.lastTransformRun = TransformRun(name: "Command Mode", instruction: instruction, before: selection, after: rewritten)
                 dictationBar.toast("Edited with Command Mode", action: "View changes") { [weak self] in self?.app.showDiffWindow() }
             } else {
                 let context = snapshot.context.textBeforeCursor
-                let answer = try await Self.withTimeout(Self.modelTaskLimit) { [polisher = self.polisher] in try await polisher.answer(instruction, context: context) }
+                let answer = dashesAsSet(try await Self.withTimeout(Self.modelTaskLimit) { [polisher = self.polisher] in try await polisher.answer(instruction, context: context) })
                 dictationBar.show(.answer(.init(question: instruction, text: answer)))
             }
         } catch {
@@ -556,7 +602,7 @@ final class DictationController {
         defer { state = .idle }
         do {
             let instructions = TransformPrompt.instructions(for: transform)
-            let rewritten = try await Self.withTimeout(Self.modelTaskLimit) { [polisher = self.polisher] in try await polisher.transform(source, instructions: instructions) }
+            let rewritten = dashesAsSet(try await Self.withTimeout(Self.modelTaskLimit) { [polisher = self.polisher] in try await polisher.transform(source, instructions: instructions) })
             await inserter.insert(rewritten)
             app.lastTransformRun = TransformRun(name: transform.name, instruction: transform.summary, before: source, after: rewritten)
             dictationBar.toast("\(transform.name) applied", action: "View changes") { [weak self] in self?.app.showDiffWindow() }

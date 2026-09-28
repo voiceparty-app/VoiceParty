@@ -120,20 +120,38 @@ public enum HistoryRetention: String, Codable, CaseIterable, Sendable {
 }
 
 public enum ModelMemoryPolicy: String, Codable, CaseIterable, Sendable {
-    case alwaysReady, loadWhenDictating
+    case automatic, loadWhenDictating, alwaysReady
 
     public var displayName: String {
         switch self {
-        case .alwaysReady: "Always ready (fastest)"
+        case .automatic: "Automatic"
         case .loadWhenDictating: "Load when I dictate"
+        case .alwaysReady: "Always ready (fastest)"
         }
     }
 
-    /// Unload after this long without dictating (nil = never).
-    public var idleUnload: Duration? {
+    /// Unload a model after this long unused (nil = never). A loaded, idle model costs next to no energy, and loading
+    /// one costs several joules: the small fast model (~300 MB) stays half an hour, so everyday gaps between dictations
+    /// don't reload it. The strong one (~3 GB, 15–25 J and ~4 s to reload) also stays half an hour on Macs with 32 GB or
+    /// more; with less memory it goes after 5 minutes.
+    ///
+    /// `.automatic` uses those times while the Mac has memory to spare and frees models sooner as it runs low (tests or
+    /// builds next to dictation): from 50% free down to 25% the time shrinks to 1 minute for the strong model and 5 for
+    /// the fast one. `freeMemoryPercent` is macOS's own figure (`kern.memorystatus_level`, what `memory_pressure` prints).
+    public func idleUnload(for tier: PolishRouter.Tier, physicalMemory: UInt64 = ProcessInfo.processInfo.physicalMemory,
+                           freeMemoryPercent: Int? = nil) -> Duration? {
+        let longest: Duration = tier == .fast || physicalMemory >= 32 << 30 ? .seconds(1800) : .seconds(300)
         switch self {
-        case .alwaysReady: nil
-        case .loadWhenDictating: .seconds(300)
+        case .alwaysReady:
+            return nil
+        case .loadWhenDictating:
+            return longest
+        case .automatic:
+            let shortest: Duration = min(tier == .fast ? .seconds(300) : .seconds(60), longest)
+            guard let free = freeMemoryPercent, free < 50 else { return longest }
+            guard free > 25 else { return shortest }
+            let low = Double(shortest.components.seconds), high = Double(longest.components.seconds)
+            return .seconds(Int((low + (high - low) * Double(free - 25) / 25).rounded()))
         }
     }
 }

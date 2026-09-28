@@ -164,7 +164,7 @@ final class AppModel {
     /// shortcuts silently stop working. Say so when it stays on for a while.
     private func watchSecureInput() {
         let started = Date()
-        Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let enabled = IsSecureEventInputEnabled()
@@ -184,6 +184,7 @@ final class AppModel {
                 }
             }
         }
+        timer.tolerance = 0.5 // lets macOS batch this wakeup with others
     }
 
     /// Parakeet installed → use it; removed → back to Apple's engine.
@@ -206,7 +207,7 @@ final class AppModel {
     @ObservationIgnored private var knownSpeechModels: Set<String>?
 
     func syncModelServers() {
-        modelServer.idleUnload = settings.modelMemory.idleUnload
+        modelServer.memoryPolicy = settings.modelMemory
         modelServer.sync(installed: { [enhancements] in enhancements.isInstalled($0) })
     }
 
@@ -407,7 +408,7 @@ final class AppModel {
     /// Intelligence. Not the small cleanup model: it's trained to tidy dictation, not to summarize.
     func modelForNotes() async -> (any TextPolisher)? {
         if enhancements.isInstalled(EnhancementID.strongCleanup) {
-            modelServer.ensureRunning()
+            modelServer.ensureRunning([EnhancementID.strongCleanup])
             for _ in 0..<90 {
                 if let strong = modelServer.strong { return strong }
                 try? await Task.sleep(for: .milliseconds(500))

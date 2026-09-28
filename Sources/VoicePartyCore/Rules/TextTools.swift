@@ -86,6 +86,16 @@ public enum TextTools {
         return compiled
     }
 
+    /// Em and en dashes as a plain hyphen: "weights—what" → "weights - what", "5–6" → "5-6". Hyphens are untouched.
+    public static func plainDashes(_ text: String) -> String {
+        guard text.contains("—") || text.contains("–") else { return text }
+        var out = replacing(text, pattern: #"(?<=\p{N})[ \t]*[–—][ \t]*(?=\p{N})"#, with: "-")
+        out = replacing(out, pattern: #"[ \t]*[—–][ \t]*"#, with: " - ")
+        out = replacing(out, pattern: #"(?m)^ - "#, with: "- ")
+        out = replacing(out, pattern: #"(?m) - $"#, with: "")
+        return out
+    }
+
     /// The capture groups of every match (group 1 onward).
     public static func matches(of pattern: String, in text: String, caseInsensitive: Bool = true) -> [[String]] {
         guard let re = regex(pattern, caseInsensitive: caseInsensitive) else { return [] }
