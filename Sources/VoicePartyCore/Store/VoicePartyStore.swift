@@ -191,6 +191,15 @@ public final class VoicePartyStore: Sendable {
         }
     }
 
+    /// What the user left in the field after correcting a dictation (nothing happens if it was deleted meanwhile).
+    public func setEditedText(id: UUID, text: String?) throws {
+        try dbQueue.write { db in
+            guard var item = try HistoryItem.fetchOne(db, key: id) else { return }
+            item.editedText = text
+            try item.update(db)
+        }
+    }
+
     public func deleteHistory(id: UUID) throws {
         _ = try dbQueue.write { try HistoryItem.deleteOne($0, key: id) }
     }
@@ -253,6 +262,17 @@ public final class VoicePartyStore: Sendable {
             let exists = try DictionaryEntry.filter(Column("phrase").collating(.nocase) == phrase).fetchCount(db) > 0
             guard !exists else { return nil }
             let entry = DictionaryEntry(phrase: phrase, source: source)
+            try entry.insert(db)
+            return entry
+        }
+    }
+
+    /// A replacement rule (`phrase → replacement`), unless the dictionary already has an entry for `phrase`.
+    public func addReplacementIfNew(_ phrase: String, replacement: String, source: DictionaryEntry.Source) throws -> DictionaryEntry? {
+        try dbQueue.write { db in
+            let exists = try DictionaryEntry.filter(Column("phrase").collating(.nocase) == phrase).fetchCount(db) > 0
+            guard !exists else { return nil }
+            let entry = DictionaryEntry(phrase: phrase, replacement: replacement, source: source)
             try entry.insert(db)
             return entry
         }

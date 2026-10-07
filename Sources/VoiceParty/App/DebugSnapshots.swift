@@ -7,26 +7,41 @@ import VoicePartyCore
 /// without taking over the screen.
 @MainActor
 enum DebugSnapshots {
-    static func render(app: AppModel, to directory: URL, dark: Bool, hubHeight: CGFloat = 740) async {
+    static func render(app: AppModel, to directory: URL, dark: Bool, hubHeight: CGFloat = 740, hubWidth: CGFloat = 1120) async {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // The menu bar the app shows while its window is in front, and whether it's a regular app right now.
         let menus = (NSApp.mainMenu?.items ?? []).map { item in
             "\(item.title): " + (item.submenu?.items.map { $0.isSeparatorItem ? "—" : $0.title + ($0.keyEquivalent.isEmpty ? "" : " ⌘\($0.keyEquivalent)") } ?? []).joined(separator: ", ")
         }
         let policy = NSApp.activationPolicy() == .regular ? "regular" : "accessory"
-        let windows = NSApp.windows.filter { !$0.title.isEmpty }.map { "window \($0.title): visible=\($0.isVisible)" }
+        let windows = NSApp.windows.filter { !$0.title.isEmpty }.map { w in
+            let host = (w.contentView as? NSHostingView<HubView>).map { " hostingSizing=\($0.sizingOptions.rawValue)" } ?? ""
+            return "window \(w.title): visible=\(w.isVisible) frame=\(Int(w.frame.width))x\(Int(w.frame.height)) minSize=\(Int(w.minSize.width))x\(Int(w.minSize.height)) contentMinSize=\(Int(w.contentMinSize.width))x\(Int(w.contentMinSize.height))\(host)"
+        }
         let dictationBarMenu = app.menus.dictationBarMenu().items.map { item in
             item.isSeparatorItem ? "—" : item.title + (item.submenu.map { " ▸ [" + $0.items.map { $0.isSeparatorItem ? "—" : $0.title }.joined(separator: ", ") + "]" } ?? "")
         }
         try? (["policy: \(policy)", "secure input blocked by: \(app.secureInputOwner ?? "none")"] + windows + menus + ["dictation bar right-click: " + dictationBarMenu.joined(separator: " | ")]).joined(separator: "\n").write(to: directory.appending(path: "menus.txt"), atomically: true, encoding: .utf8)
         let suffix = dark ? "-dark" : ""
         let navigation = HubNavigation()
-        await capture(HubView(app: app, navigation: navigation), size: NSSize(width: 1120, height: hubHeight), dark: dark) { host in
+        await capture(HubView(app: app, navigation: navigation), size: NSSize(width: hubWidth, height: hubHeight), dark: dark) { host in
             for section in HubSection.allCases {
                 navigation.section = section
                 try? await Task.sleep(for: .milliseconds(700))
                 save(host, to: directory.appending(path: "hub-\(section.rawValue)\(suffix).png"))
             }
+            #if VOICEPARTY_DEBUG_URLS
+            // Home with the first dictation's hover actions showing.
+            if let first = app.history.first {
+                HistoryRowDebug.hovered = first.id
+                navigation.section = .dictionary
+                try? await Task.sleep(for: .milliseconds(300))
+                navigation.section = .home
+                try? await Task.sleep(for: .milliseconds(700))
+                save(host, to: directory.appending(path: "hub-home-hover\(suffix).png"))
+                HistoryRowDebug.hovered = nil
+            }
+            #endif
             // Dictionary in bulk-select mode with two entries checked.
             navigation.section = .home
             navigation.debugSelectDictionaryEntries = 2
@@ -80,6 +95,7 @@ enum DebugSnapshots {
         window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         if let background { window.backgroundColor = background }
         let host = NSHostingView(rootView: view)
+        host.sizingOptions = [] // render at exactly `size`, as the app's windows do (a page too wide shows clipped)
         window.contentView = host
         window.orderBack(nil)
         await body(host)

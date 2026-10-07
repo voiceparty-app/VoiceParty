@@ -145,7 +145,13 @@ public struct DictationPipeline: Sendable {
         }
 
         let modelMayRun = cleanupLevel != .none && polisher != nil && TextTools.wordCount(trimmed) >= minWordsForPolisher
-        var text = cleaner.applyVoiceCommands(trimmed, resolveRetractions: !modelMayRun)
+        // A phrase the recognizer wrote twice at a window seam ("you can check You can check"): fixed before a model
+        // can hide the mark by lowercasing the copy.
+        // …and a capital without a sentence break before it: a stray capital ("and The results") or a sentence the recognizer
+        // didn't end ("correct And what…"). After the copy check, which relies on the capital.
+        let transcript = cleanupLevel == .none ? trimmed
+            : RuleBasedCleaner.spokenBusinessAcronyms(SentenceShape.repairCapitals(RuleBasedCleaner.collapseRepeatedPhrases(trimmed)))
+        var text = cleaner.applyVoiceCommands(transcript, resolveRetractions: !modelMayRun)
         var status = TranscriptStatus.rulesOnly
         var polisherID: String?
 
@@ -190,6 +196,10 @@ public struct DictationPipeline: Sendable {
             text = HomophoneFixer().fix(text)
             // Long dictations read better in paragraphs (before snippets, so an expansion isn't split).
             text = Paragrapher().apply(text)
+        }
+        // Questions the recognizer (or a model) ended with a period: "What can we do to solve this?"
+        if cleanupLevel != .none && context.category != .terminal {
+            text = SentenceShape.addQuestionMarks(text)
         }
 
         let expanded = expander.expand(text)

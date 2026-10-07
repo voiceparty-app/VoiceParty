@@ -25,7 +25,15 @@ public enum TextTools {
     }
 
     public static func levenshtein(_ a: String, _ b: String) -> Int {
-        let a = Array(a), b = Array(b)
+        var a = Array(a)[...], b = Array(b)[...]
+        // The common start and end never change the distance; skipping them makes a one-word edit in a long text cheap
+        // (the edit watcher compares a whole dictation on every change while you correct it).
+        while let x = a.first, let y = b.first, x == y { a.removeFirst(); b.removeFirst() }
+        while let x = a.last, let y = b.last, x == y { a.removeLast(); b.removeLast() }
+        return distance(Array(a), Array(b))
+    }
+
+    private static func distance(_ a: [Character], _ b: [Character]) -> Int {
         if a.isEmpty { return b.count }
         if b.isEmpty { return a.count }
         var previous = Array(0...b.count)

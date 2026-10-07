@@ -144,11 +144,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let directory = URL(fileURLWithPath: query["dir"] ?? NSTemporaryDirectory()).appending(path: "voiceparty-snapshots")
             Task {
                 await DebugSnapshots.render(app: model, to: directory, dark: query["dark"] == "1",
-                                           hubHeight: Double(query["height"] ?? "").map { CGFloat($0) } ?? 740)
+                                           hubHeight: Double(query["height"] ?? "").map { CGFloat($0) } ?? 740,
+                                           hubWidth: Double(query["width"] ?? "").map { CGFloat($0) } ?? 1120)
                 try? "done".write(to: directory.appending(path: "done"), atomically: true, encoding: .utf8)
             }
         case "debug/watch-edits" where DebugURLs.enabled:
-            model.dictation.watchForTesting(bundleID: query["bundle"] ?? "", pasted: query["pasted"] ?? "")
+            // dry=1: what would be learned goes to debug-edit-watch.json (counts only) instead of the dictionary.
+            model.dictation.watchForTesting(bundleID: query["bundle"] ?? "", pasted: query["pasted"] ?? "", dry: query["dry"] == "1")
+        case "debug/edit-test" where DebugURLs.enabled:
+            // The edit watcher end to end on a field in an invisible window of our own (see DebugEditTest) → debug-edit-test.json.
+            let dictionary = (query["dictionary"] ?? "").split(separator: ",").map { DictionaryEntry(phrase: String($0), source: .manual) }
+            Task {
+                let report = await DebugEditTest.run(app: model, kind: query["field"] ?? "text", prefix: query["prefix"] ?? "",
+                                                     pasted: query["pasted"] ?? "", steps: DebugEditTest.Step.parse(query["steps"] ?? ""),
+                                                     dictionary: dictionary, window: Double(query["window"] ?? "") ?? 60)
+                if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
+                    try? data.write(to: Paths.appSupport.appending(path: "debug-edit-test.json"))
+                }
+            }
+        case "debug/ax-probe" where DebugURLs.enabled:
+            // How apps expose their focused text field (structure only, no text) → debug-ax.json.
+            let bundles = (query["bundles"] ?? "").split(separator: ",").map(String.init)
+            Task.detached {
+                let report = AXProbe.report(bundles: bundles, wake: query["wake"] == "1")
+                if let data = try? JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]) {
+                    try? data.write(to: Paths.appSupport.appending(path: "debug-ax.json"))
+                }
+            }
         case "debug/ocr" where DebugURLs.enabled:
             // OCR + term extraction on an image file (tests screen reading without Screen Recording permission).
             guard let path = query["file"], let image = NSImage(contentsOfFile: path)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }

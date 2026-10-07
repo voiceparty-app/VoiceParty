@@ -36,6 +36,10 @@ struct HubView: View {
     @Bindable var app: AppModel
     @Bindable var navigation: HubNavigation
 
+    /// Every page is laid out for this and up (Home and Insights rearrange, Dictionary's filters wrap). The window's
+    /// hosting view turns it into the window's minimum; a minimum set on the window itself is reset by the hosting view.
+    static let minimumSize = CGSize(width: 800, height: 560)
+
     var body: some View {
         HStack(spacing: 0) {
             sidebar
@@ -47,6 +51,7 @@ struct HubView: View {
                 .padding(.top, 44)
                 .padding([.trailing, .bottom], 12)
         }
+        .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
         .background(Theme.canvas)
         .ignoresSafeArea()
         .sheet(isPresented: $navigation.showSettings) {

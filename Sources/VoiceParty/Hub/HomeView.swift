@@ -4,6 +4,7 @@ import VoicePartyCore
 
 struct HomeView: View {
     @Bindable var app: AppModel
+    @State private var headerWidth: CGFloat = 800
     @State private var search = ""
     @State private var searching = false
 
@@ -26,15 +27,26 @@ struct HomeView: View {
 
                 StatusBanners(app: app)
 
-                // Hero and stats share top and bottom edges.
-                HStack(alignment: .top, spacing: 18) {
-                    HeroCard(hotkey: app.pushToTalkName)
-                        .frame(maxHeight: .infinity)
-                    StatsCard(stats: app.stats)
-                        .frame(width: 250)
-                        .frame(maxHeight: .infinity)
+                // Hero and stats share top and bottom edges; in a narrow window the stats go in a row under the hero.
+                Group {
+                    if headerWidth >= 660 {
+                        HStack(alignment: .top, spacing: 18) {
+                            HeroCard(hotkey: app.pushToTalkName, showsWaveform: headerWidth - 268 >= 480)
+                                .frame(maxHeight: .infinity)
+                            StatsCard(stats: app.stats)
+                                .frame(width: 250)
+                                .frame(maxHeight: .infinity)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        VStack(spacing: 14) {
+                            HeroCard(hotkey: app.pushToTalkName, showsWaveform: headerWidth >= 480)
+                            StatsCard(stats: app.stats, inRow: true)
+                        }
+                    }
                 }
-                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { headerWidth = $0 }
 
                 HStack {
                     Text(searching ? "SEARCH" : (days.first?.label ?? "TODAY"))
@@ -138,6 +150,8 @@ private struct Banner: View {
 
 private struct HeroCard: View {
     var hotkey: String
+    /// The decorative waveform, when the card is wide enough that the text doesn't have to squeeze past it.
+    var showsWaveform = true
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -152,10 +166,12 @@ private struct HeroCard: View {
                         .font(.system(size: 13))
                         .foregroundStyle(.white.opacity(0.75))
                 }
-                Spacer()
-                Image(systemName: "waveform")
-                    .font(.system(size: 72, weight: .ultraLight))
-                    .foregroundStyle(.white.opacity(0.25))
+                Spacer(minLength: 0)
+                if showsWaveform {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 72, weight: .ultraLight))
+                        .foregroundStyle(.white.opacity(0.25))
+                }
             }
             .padding(28)
         }
@@ -166,14 +182,17 @@ private struct HeroCard: View {
 
 struct StatsCard: View {
     var stats: UsageStats
+    /// Side by side in one row (under the hero in a narrow window) instead of stacked.
+    var inRow = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let layout = inRow ? AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 28)) : AnyLayout(VStackLayout(alignment: .leading, spacing: 16))
+        layout {
             stat(stats.totalWords.formatted(.number.notation(.compactName)), "total words")
             stat("\(stats.wordsPerMinute)", "wpm")
             stat("\(stats.dayStreak)", stats.dayStreak == 1 ? "day streak" : "day streak")
         }
-        .padding(22)
+        .padding(inRow ? 18 : 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.well))
     }
@@ -199,8 +218,15 @@ private struct EmptyHistory: View {
     }
 }
 
+#if VOICEPARTY_DEBUG_URLS
+/// Debug snapshots: draw this history row as if the pointer were over it.
+@MainActor enum HistoryRowDebug { static var hovered: UUID? }
+#endif
+
 /// Kept cheap for smooth scrolling: fixed height regardless of hover, no per-row SwiftUI Menu
 /// (actions are built only when the popover/context menu opens), no selectable-text view.
+/// The actions live in a gutter on the right that the text never enters (reserved even when hidden, so hovering doesn't
+/// reflow the row): play, copy and "…" (the details and the other actions).
 private struct HistoryRow: View {
     let app: AppModel
     let item: HistoryItem
@@ -208,8 +234,21 @@ private struct HistoryRow: View {
     @State private var hovering = false
     @State private var showingActions = false
     @State private var player: AVAudioPlayer?
+    @State private var playing = false
+    @State private var copied = false
 
     private static let timeFormat = Date.FormatStyle(date: .omitted, time: .shortened)
+    private static let gutterWidth: CGFloat = 92
+    private var showsActions: Bool {
+        #if VOICEPARTY_DEBUG_URLS
+        if HistoryRowDebug.hovered == item.id { return true }
+        #endif
+        return hovering || showingActions
+    }
+
+    private var audioPath: String? {
+        item.audioPath.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -224,52 +263,20 @@ private struct HistoryRow: View {
                 Text(item.pastedText.isEmpty ? "(empty)" : item.pastedText)
                     .font(.system(size: 14))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                actionButtons
+                    .frame(width: Self.gutterWidth, alignment: .trailing)
+                    .padding(.top, -3)
+                    .opacity(showsActions ? 1 : 0)
+                    .allowsHitTesting(showsActions)
             }
             .padding(.horizontal, 18)
             .padding(.vertical, 14)
-            .background(Theme.selection.opacity(hovering ? 0.45 : 0))
-            // Details float over the row's top-right corner on hover, so rows keep even padding and a fixed height.
-            .overlay(alignment: .topTrailing) {
-                HStack(spacing: 10) {
-                    metadata
-                    Button { showingActions = true } label: {
-                        Image(systemName: "ellipsis").foregroundStyle(.secondary).frame(width: 22, height: 20).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showingActions, arrowEdge: .trailing) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(actions(), id: \.title) { action in
-                                Button {
-                                    showingActions = false
-                                    action.run()
-                                } label: {
-                                    Text(action.title)
-                                        .foregroundStyle(action.destructive ? Color.red : Color.primary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, 10).frame(height: 26)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(6)
-                        .frame(width: 180)
-                    }
-                }
-                .padding(.leading, 12).padding(.trailing, 4)
-                .frame(height: 26)
-                .background(Capsule().fill(Theme.card))
-                .overlay(Capsule().strokeBorder(Theme.hairline))
-                .shadow(color: .black.opacity(0.07), radius: 5, y: 1)
-                .padding(.top, 9).padding(.trailing, 12)
-                .opacity(hovering || showingActions ? 1 : 0)
-                .offset(y: hovering || showingActions ? 0 : -3)
-            }
+            .background(Theme.selection.opacity(showsActions ? 0.45 : 0))
             .contentShape(Rectangle())
-            .animation(.easeOut(duration: 0.18), value: hovering)
+            .animation(.easeOut(duration: 0.15), value: hovering)
             .onHover { hovering = $0 }
             .contextMenu {
-                ForEach(actions(), id: \.title) { action in
+                ForEach(actions(includeIconActions: true), id: \.title) { action in
                     Button(action.title, role: action.destructive ? .destructive : nil) { action.run() }
                 }
             }
@@ -277,13 +284,62 @@ private struct HistoryRow: View {
         }
     }
 
-    private var metadata: some View {
-        HStack(spacing: 10) {
-            if let name = item.appName { Text(name) }
-            Text("\(item.wordCount) words")
-            if item.latencyMs > 0 { Text("\(item.latencyMs) ms") }
-            if item.status == .formatted { Label("AI cleaned", systemImage: "sparkles") }
+    private var actionButtons: some View {
+        HStack(spacing: 2) {
+            if let path = audioPath {
+                iconButton(playing ? "stop.fill" : "play.fill", help: playing ? "Stop" : "Play audio") {
+                    playing ? stop() : play(path)
+                }
+            }
+            iconButton(copied ? "checkmark" : "doc.on.doc", help: "Copy") { copy() }
+            iconButton("ellipsis", help: "More") { showingActions = true }
+                .popover(isPresented: $showingActions, arrowEdge: .trailing) { moreMenu }
+        }
+    }
+
+    private func iconButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+
+    /// The details (app, length, cleanup) and the actions that aren't icons.
+    private var moreMenu: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            details
+                .padding(.horizontal, 10).padding(.top, 4).padding(.bottom, 6)
+            Divider().padding(.bottom, 2)
+            ForEach(actions(includeIconActions: false), id: \.title) { action in
+                Button {
+                    showingActions = false
+                    action.run()
+                } label: {
+                    Text(action.title)
+                        .foregroundStyle(action.destructive ? Color.red : Color.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 10).frame(height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(6)
+        .frame(width: 220)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text([item.appName, "\(item.wordCount) words", item.latencyMs > 0 ? "\(item.latencyMs) ms" : nil]
+                .compactMap { $0 }.joined(separator: " · "))
             if item.revertedAI { Text("AI edit undone") }
+            else if item.status == .formatted { Label("AI cleaned", systemImage: "sparkles") }
         }
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
@@ -296,16 +352,16 @@ private struct HistoryRow: View {
         var run: () -> Void
     }
 
-    private func actions() -> [RowAction] {
-        var list = [
-            RowAction(title: "Copy") { app.dictation.inserter.copy(item.pastedText) },
-            RowAction(title: "Paste") { Task { await app.dictation.inserter.insert(item.pastedText) } },
-        ]
+    /// `includeIconActions`: also Copy and Play audio (the right-click menu has everything; "…" leaves out the icons).
+    private func actions(includeIconActions: Bool) -> [RowAction] {
+        var list: [RowAction] = []
+        if includeIconActions { list.append(RowAction(title: "Copy") { copy() }) }
+        list.append(RowAction(title: "Paste") { Task { await app.dictation.inserter.insert(item.pastedText) } })
         if item.status == .formatted && item.rawText != item.pastedText && !item.revertedAI {
             list.append(RowAction(title: "Restore what you said") { undoAIEdit() })
         }
-        if let path = item.audioPath, FileManager.default.fileExists(atPath: path) {
-            list.append(RowAction(title: "Play audio") { play(path) })
+        if let path = audioPath {
+            if includeIconActions { list.append(RowAction(title: "Play audio") { play(path) }) }
             list.append(RowAction(title: "Retry transcript") { retry(path) })
         }
         list.append(RowAction(title: "Delete", destructive: true) {
@@ -326,9 +382,27 @@ private struct HistoryRow: View {
         app.reloadHistory()
     }
 
+    private func copy() {
+        app.dictation.inserter.copy(item.pastedText)
+        copied = true
+        Task { try? await Task.sleep(for: .seconds(1.2)); copied = false }
+    }
+
     private func play(_ path: String) {
-        player = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
-        player?.play()
+        guard let audio = try? AVAudioPlayer(contentsOf: URL(fileURLWithPath: path)) else { return }
+        player = audio
+        audio.play()
+        playing = true
+        Task { // back to "play" when it ends (unless another play or a stop came first)
+            try? await Task.sleep(for: .seconds(audio.duration + 0.2))
+            if player === audio { playing = false }
+        }
+    }
+
+    private func stop() {
+        player?.stop()
+        player = nil
+        playing = false
     }
 
     private func retry(_ path: String) {

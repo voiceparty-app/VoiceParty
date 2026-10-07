@@ -38,9 +38,12 @@ public enum SpelledOutNames {
     }
 
     /// Dictionary words that can be spelled out: single names in their own casing, not common words or acronyms.
+    /// An inner capital marks a name even when it starts lowercase or is near a common word ("loopOS", not "loops").
     public static func isCandidate(_ phrase: String) -> Bool {
         guard phrase.count >= 5, !phrase.contains(" "), phrase.allSatisfy(\.isLetter),
-              phrase.first?.isUppercase == true, phrase.dropFirst().contains(where: \.isLowercase) else { return false }
+              phrase.contains(where: \.isLowercase) else { return false }
+        if phrase.first?.isLowercase == true, phrase.dropFirst().contains(where: \.isUppercase) { return true }
+        guard phrase.first?.isUppercase == true, phrase.dropFirst().contains(where: \.isLowercase) else { return false }
         return !CommonWords.isNearCommon(phrase)
     }
 
@@ -84,8 +87,9 @@ public enum SoundAlikeNames {
         guard let re = TextTools.regex(#"[\p{L}]+"#) else { return (text, 0) }
         let termWords = term.split(separator: " ").count
         // A one-word name only ever replaces one heard word, and never an ordinary one ("share on" is not
-        // "Sharon", "brand" is not "Brandt"). Multi-word names ("Wispr Flow") may be heard as ordinary words.
-        let maxWidth = termWords == 1 ? 1 : termWords + 1
+        // "Sharon", "brand" is not "Brandt") — or a word plus the letters the recognizer spelled the rest of it in
+        // ("Grat CN" for "Gradcn"). Multi-word names ("Wispr Flow") may be heard as ordinary words.
+        let maxWidth = termWords == 1 ? 2 : termWords + 1
         let ns = text as NSString
         let words = re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map(\.range)
         var replacements: [NSRange] = []
@@ -99,14 +103,31 @@ public enum SoundAlikeNames {
                     ns.substring(with: NSRange(location: a.upperBound, length: b.location - a.upperBound)).allSatisfy { $0 == " " }
                 }
                 guard adjacent, let first = window.first, let last = window.last else { continue }
+                if termWords == 1 && width == 2 {
+                    let letters = ns.substring(with: last), word = ns.substring(with: first)
+                    guard letters.count <= 3, letters.allSatisfy(\.isUppercase), !word.allSatisfy(\.isUppercase) else { continue }
+                }
                 let range = NSRange(location: first.location, length: last.upperBound - first.location)
                 if isEmbedded(range, in: ns) { continue } // part of tamaro_client, /srv/tamaro, tamaro.io
                 let found = ns.substring(with: range)
                 let heard = found.lowercased().filter(\.isLetter)
-                guard found != term, heard.first == goal.first, !(termWords == 1 && isEnglishWord(heard)),
+                // Capitalised in mid-sentence, an ordinary word is being used as a name ("all Endeavor inventory" with
+                // Andevor in the dictionary): then it may be one, a first vowel may differ ("a"/"e" sound alike
+                // unstressed), and a slightly looser spelling match counts if it sounds alike.
+                let usedAsName = termWords == 1 && found.first?.isUppercase == true && isMidSentence(range, in: ns)
+                let vowels: Set<Character> = ["a", "e", "i", "o", "u"]
+                let sameStart = heard.first == goal.first
+                    || (usedAsName && heard.first.map(vowels.contains) == true && goal.first.map(vowels.contains) == true)
+                // A word capitalised mid-sentence that isn't English is a name the recognizer didn't know. With the same
+                // consonant sounds in as many syllables it is this one, even spelled quite differently ("Lotavi"/"Holtavi").
+                let sameShape = termWords == 1 && width == 1 && found.first?.isUppercase == true && isMidSentence(range, in: ns)
+                    && !isEnglishWord(heard) && !CommonWords.isNearCommon(heard)
+                    && TextTools.similarity(heard, goal) >= 0.4 && Phonetic.sameShape(heard, goal)
+                guard found != term, sameStart || sameShape, usedAsName || !(termWords == 1 && isEnglishWord(heard)),
                       !(heard.hasPrefix(goal) && heard.count > goal.count), // plurals/possessives: "Marias"
-                      heard == goal || (TextTools.similarity(heard, goal) >= 0.8 && Phonetic.soundsAlike(heard, goal)),
-                      !found.split(separator: " ").allSatisfy({ CommonWords.contains(String($0)) }) else { continue }
+                      heard == goal || sameShape
+                        || (TextTools.similarity(heard, goal) >= (usedAsName ? 0.75 : 0.8) && Phonetic.soundsAlike(heard, goal)),
+                      usedAsName || !found.split(separator: " ").allSatisfy({ CommonWords.contains(String($0)) }) else { continue }
                 matched = range
                 index += width
                 break
@@ -118,6 +139,13 @@ public enum SoundAlikeNames {
             if let r = Range(range, in: out) { out.replaceSubrange(r, with: term) }
         }
         return (out, replacements.count)
+    }
+
+    /// After a word on the same line (not at the start of a sentence, where every word is capitalised).
+    static func isMidSentence(_ range: NSRange, in text: NSString) -> Bool {
+        let before = text.substring(to: range.location)
+        guard let last = before.last(where: { $0 != " " && $0 != "\t" }) else { return false }
+        return last.isLetter || last.isNumber || last == ","
     }
 
     /// Letters inside an identifier, path, address or domain aren't a spoken word.

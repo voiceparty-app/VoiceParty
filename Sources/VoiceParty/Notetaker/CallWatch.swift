@@ -5,13 +5,16 @@ import VoicePartyCore
 /// Which call apps are using the microphone right now, from Core Audio's per-process state (no screen
 /// reading, no permissions).
 enum CallWatch {
-    static func callAppsUsingMic() -> Set<String> {
-        var apps = Set<String>()
-        for process in processObjects() where isRunningInput(process) {
-            if let bundleID = bundleID(of: process), let app = CallDetector.appName(forBundleID: bundleID) { apps.insert(app) }
+    /// Every call app's audio processes: whether each is recording from the mic and playing sound.
+    static func callAudio() -> [CallDetector.AudioUse] {
+        processObjects().compactMap { process in
+            guard let bundleID = bundleID(of: process), let app = CallDetector.appName(forBundleID: bundleID) else { return nil }
+            return CallDetector.AudioUse(app: app, process: pid(of: process), input: isRunning(process, kAudioProcessPropertyIsRunningInput),
+                                         output: isRunning(process, kAudioProcessPropertyIsRunningOutput))
         }
-        return apps
     }
+
+    static func callAppsUsingMic() -> Set<String> { Set(callAudio().filter(\.input).map(\.app)) }
 
     /// Every process Core Audio knows, with its bundle ID (to record only a call app's audio).
     static func audioProcesses() -> [(bundleID: String, id: UInt32)] {
@@ -28,12 +31,20 @@ enum CallWatch {
         return processes
     }
 
-    private static func isRunningInput(_ process: AudioObjectID) -> Bool {
-        var address = AudioObjectPropertyAddress(mSelector: kAudioProcessPropertyIsRunningInput, mScope: kAudioObjectPropertyScopeGlobal,
+    private static func isRunning(_ process: AudioObjectID, _ selector: AudioObjectPropertySelector) -> Bool {
+        var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
                                                  mElement: kAudioObjectPropertyElementMain)
         var running: UInt32 = 0
         var size = UInt32(MemoryLayout<UInt32>.size)
         return AudioObjectGetPropertyData(process, &address, 0, nil, &size, &running) == noErr && running != 0
+    }
+
+    private static func pid(of process: AudioObjectID) -> Int32 {
+        var address = AudioObjectPropertyAddress(mSelector: kAudioProcessPropertyPID, mScope: kAudioObjectPropertyScopeGlobal,
+                                                 mElement: kAudioObjectPropertyElementMain)
+        var pid: pid_t = 0
+        var size = UInt32(MemoryLayout<pid_t>.size)
+        return AudioObjectGetPropertyData(process, &address, 0, nil, &size, &pid) == noErr ? pid : -1
     }
 
     private static func bundleID(of process: AudioObjectID) -> String? {

@@ -2,6 +2,13 @@ import Foundation
 
 /// Builds the meeting transcript from the two sides.
 public enum NoteTranscript {
+    /// One chunk's recognized text as it goes into the transcript. Chunks run up to 30 s, so Parakeet Unified's 15 s
+    /// windows put seams inside them, and a seam can keep a copy of a phrase ("you can check You can check the logs"):
+    /// written once, as in dictation (`RuleBasedCleaner.collapseRepeatedPhrases`, narrow enough to leave meant repeats).
+    public static func chunkText(_ recognized: String) -> String {
+        RuleBasedCleaner.collapseRepeatedPhrases(recognized.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// Interleaves both sides by time. On laptop speakers the mic also hears the other side, so a line of
     /// "You" that repeats an overlapping line of "Others" is an echo and dropped. Back-to-back lines from the
     /// same speaker (a pause under 2 s) are joined.

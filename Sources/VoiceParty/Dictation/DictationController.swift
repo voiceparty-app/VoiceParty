@@ -409,8 +409,10 @@ final class DictationController {
         }
         if privacy.saveHistory { app.record(item, dictionaryUsed: result.dictionaryUsed) }
 
-        if privacy.learnFromEdits, settings.autoLearnWords, outcome == .pasted, let element = snapshot.focusedElement {
-            watchEdits(element: element, pasted: result.text)
+        if privacy.learnFromEdits, settings.autoLearnWords, outcome == .pasted, let pid = targetPID {
+            let saved = privacy.saveHistory && settings.historyRetention != .neverStore
+            watchEdits(FieldReader(.focused(pid: pid, fallback: snapshot.focusedElement, frontmostOnly: true)), pasted: result.text,
+                       historyID: saved ? item.id : nil, app: snapshot.context.appBundleID)
         }
     }
 
@@ -613,60 +615,40 @@ final class DictationController {
 
     // MARK: - Learning from edits
 
-    /// Debug/E2E: learn from edits to `app`'s focused field as if `pasted` had just been dictated into it
-    /// (nothing is pasted or typed; the test edits the field itself).
-    func watchForTesting(bundleID: String, pasted: String) {
-        guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return }
-        let application = AXUIElementCreateApplication(running.processIdentifier)
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(application, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else {
-            dictationBar.toast("Debug: no focused text field in \(bundleID)", style: .error)
+    /// Debug/E2E: learn from edits to `app`'s focused field as if `pasted` had just been dictated into it (nothing is
+    /// pasted or typed; the test edits the field itself). The app needn't be in front. `dry`: report what would be
+    /// learned to debug-edit-watch.json instead of changing the dictionary.
+    func watchForTesting(bundleID: String, pasted: String, dry: Bool) {
+        guard let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else {
+            dictationBar.toast("Debug: \(bundleID) isn't running", style: .error)
             return
         }
-        watchEdits(element: focused as! AXUIElement, pasted: pasted)
+        watchEdits(FieldReader(.focused(pid: running.processIdentifier, fallback: nil, frontmostOnly: false)), pasted: pasted,
+                   historyID: nil, app: bundleID, dry: dry)
     }
 
-    /// After pasting, follow the pasted text in the field for up to a minute. When the
-    /// correction settles (3 s), is sent (Enter / the box empties) or focus moves away, the corrected words
-    /// go into the dictionary with an Undo toast.
-    private func watchEdits(element: AXUIElement, pasted: String) {
-        editWatch?.cancel()
-        let rejected = Set(settings.rejectedLearnedWords)
-        editWatch = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard let field = ContextReader.value(of: element), field.count < 20_000,
-                  var observation = EditObservation(field: field, pasted: pasted) else { return }
-            let learner = EditDiffLearner(rejected: rejected) { word in
-                MainActor.assumeIsolated { NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound }
-            }
-            let started = ContinuousClock.now
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(500))
-                guard !Task.isCancelled else { return }
-                let elapsed = ContinuousClock.now - started
-                let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
-                // Focus moved or the field is gone: decide with what we saw last.
-                let value = Self.isFocused(element) ? ContextReader.value(of: element) ?? "" : ""
-                switch observation.observe(value, at: seconds) {
-                case .keepWatching: continue
-                case .stop: return
-                case .learn(let edited):
-                    let words = learner.learnedWords(pasted: observation.pasted, edited: edited)
-                    if !words.isEmpty { self?.app.learn(words) }
-                    return
+    /// After pasting, follow the pasted text in the field for up to a minute. When the correction settles (3 s), is
+    /// sent (Enter / the box empties), focus moves away or the next dictation starts, the dictation keeps the corrected
+    /// text and what it teaches goes into the dictionary, with an Undo toast.
+    private func watchEdits(_ reader: FieldReader, pasted: String, historyID: UUID?, app bundleID: String?, dry: Bool = false) {
+        editWatch?.cancel() // decides the previous one with what it saw
+        // Off the main thread: an app that answers Accessibility slowly mustn't hold up the hotkeys.
+        editWatch = Task.detached(priority: .utility) { [model = app] in
+            let result = await EditWatchRun.run(reader, pasted: pasted)
+            await MainActor.run {
+                var learned: EditDiffLearner.Learned?
+                if case .corrected(let original, let edited) = result.outcome {
+                    learned = dry ? model.plannedLearning(pasted: original, edited: edited)
+                                  : model.learnFromCorrection(pasted: original, edited: edited, historyID: historyID)
                 }
+                #if VOICEPARTY_DEBUG_URLS
+                // Why a watch learned nothing, without the text (debug-edit-watch.json).
+                if DebugURLs.enabled { EditWatchLog.append(result, app: bundleID, learned: learned, dry: dry) }
+                #else
+                _ = (learned, bundleID)
+                #endif
             }
         }
-    }
-
-    /// Whether `element` is still the focused element of the frontmost app.
-    private static func isFocused(_ element: AXUIElement) -> Bool {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return false }
-        var focused: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-              let focused else { return false }
-        return CFEqual(focused, element)
     }
 }
 

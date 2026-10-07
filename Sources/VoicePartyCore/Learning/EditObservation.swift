@@ -3,7 +3,8 @@ import Foundation
 /// Follows one pasted dictation in a text field to see how the user corrected it (the learning half of
 /// "Learn words from my corrections"). Only the pasted region counts: the text before and after it at paste time
 /// anchor it. The correction is taken when it has settled for a few seconds, when Enter sends it (a
-/// trailing newline, or the box empties), when the anchors break, or when the window ends.
+/// trailing newline, or the box empties), when the anchors break, when the watch is ended early (focus moved, the
+/// next dictation started) or when the window ends.
 /// A heavy rewrite isn't a correction: past a distance limit the last light edit is kept instead.
 public struct EditObservation: Equatable, Sendable {
     public enum Decision: Equatable, Sendable {
@@ -26,13 +27,42 @@ public struct EditObservation: Equatable, Sendable {
 
     /// nil when the pasted text isn't in the field (the app changed it, or focus moved).
     public init?(field: String, pasted: String) {
-        let text = pasted.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = Self.normalize(pasted).trimmingCharacters(in: .whitespacesAndNewlines)
+        let field = Self.normalize(field)
         guard !text.isEmpty, let range = field.range(of: text, options: .backwards) else { return nil }
         self.pasted = text
         prefix = String(field[..<range.lowerBound])
         suffix = String(field[range.upperBound...])
         lastGood = text
         region = text
+    }
+
+    /// Text as editors hand it back, in one shape for comparing: web editors keep paragraphs as blocks (read back
+    /// with a single "\n" between them, and one after the last), type non-breaking spaces, and some use other line
+    /// separators. A run of line breaks (with the spaces around it) becomes one "\n", other spaces a plain space;
+    /// invisible marks are dropped.
+    public static func normalize(_ text: String) -> String {
+        var out = String.UnicodeScalarView()
+        var pendingBreak = false
+        var pendingSpaces = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            switch scalar {
+            case "\n", "\r", "\u{2028}", "\u{2029}", "\u{0B}", "\u{0C}":
+                pendingBreak = true
+                pendingSpaces.removeAll()
+            case " ", "\t", "\u{00A0}", "\u{2007}", "\u{2009}", "\u{200A}", "\u{202F}":
+                if !pendingBreak { pendingSpaces.append(scalar == "\t" ? "\t" : " ") }
+            case "\u{200B}", "\u{2060}", "\u{FEFF}":
+                continue
+            default:
+                if pendingBreak { out.append("\n") } else { out.append(contentsOf: pendingSpaces) }
+                pendingBreak = false
+                pendingSpaces.removeAll()
+                out.append(scalar)
+            }
+        }
+        if pendingBreak { out.append("\n") } else { out.append(contentsOf: pendingSpaces) }
+        return String(out)
     }
 
     /// How far a correction may stray from the paste before it counts as a rewrite: generous for a few
@@ -43,8 +73,10 @@ public struct EditObservation: Equatable, Sendable {
 
     public mutating func observe(_ field: String, at time: TimeInterval) -> Decision {
         guard !finished else { return .stop }
-        // The box emptied (message sent) or the text around the paste changed: decide with what we have.
-        guard !field.isEmpty, field.hasPrefix(prefix), field.hasSuffix(suffix),
+        let field = Self.normalize(field)
+        // The box emptied (the message was sent: a web editor's empty box reads "\n") or the text around the paste
+        // changed: decide with what we have.
+        guard !field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, field.hasPrefix(prefix), field.hasSuffix(suffix),
               field.count >= prefix.count + suffix.count else { return finish() }
         var current = String(field.dropFirst(prefix.count).dropLast(suffix.count))
         let sent = current.hasSuffix("\n") && !pasted.hasSuffix("\n")
@@ -58,6 +90,15 @@ public struct EditObservation: Equatable, Sendable {
         if sent || time >= window { return finish() }
         if let changedAt, time - changedAt >= settle, lastGood != pasted { return finish() }
         return .keepWatching
+    }
+
+    /// The corrected paste so far (nil while it's as dictated).
+    public var correction: String? { lastGood != pasted ? lastGood : nil }
+
+    /// Decide now with what was seen (focus moved, or a new dictation started).
+    public mutating func end() -> Decision {
+        guard !finished else { return .stop }
+        return finish()
     }
 
     private mutating func finish() -> Decision {

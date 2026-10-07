@@ -7,7 +7,7 @@ import VoicePartyCore
 enum ContextReader {
     struct Snapshot {
         var context: DictationContext
-        /// The focused element, kept for learning from the user's edits after pasting.
+        /// The focused element at key-down: what the edit watcher reads if the app reports no focused element later.
         var focusedElement: AXUIElement?
         /// A password field: the dictation leaves no trace (see DictationPrivacy).
         var isSecureField = false
@@ -22,8 +22,11 @@ enum ContextReader {
         if let pid = app?.processIdentifier {
             let appElement = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(appElement, 0.2)
-            // Chromium/Electron apps only build their accessibility tree when asked.
+            // Chromium/Electron apps only build their accessibility tree when asked: Electron apps (Claude, Cursor) take
+            // AXManualAccessibility; apps built on Chromium itself (Chrome, the ChatGPT app) don't have it (the attribute
+            // is unsupported there) and switch theirs on when an assistive app reads the application's role.
             AXUIElementSetAttributeValue(appElement, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+            _ = copy(appElement, kAXRoleAttribute) as String?
 
             if let window: AXUIElement = copy(appElement, kAXFocusedWindowAttribute) {
                 // Titles can hold email subjects and document names: only read with Context awareness on.
@@ -60,11 +63,6 @@ enum ContextReader {
         let appElement = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(appElement, 0.2)
         return copy(appElement, kAXFocusedUIElementAttribute)
-    }
-
-    /// Full text value of an element (used to watch for edits after pasting).
-    static func value(of element: AXUIElement) -> String? {
-        copy(element, kAXValueAttribute)
     }
 
     // MARK: - Private

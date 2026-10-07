@@ -156,7 +156,7 @@ final class NoteTranscriber: @unchecked Sendable {
             if let converter = BufferConverter(from: format, to: session.audioFormat), let converted = converter.convert(buffer) {
                 session.append(converted)
             }
-            let text = try await session.finish().trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = NoteTranscript.chunkText(try await session.finish())
             return text.isEmpty ? nil : NoteSegment(speaker: speaker, start: chunk.speechStart, end: chunk.start + chunk.duration, text: text)
         } catch {
             return nil // one chunk failing shouldn't lose the meeting; its audio is still in the file

@@ -42,6 +42,22 @@ public struct RuleBasedCleaner: Sendable {
         return TextTools.replacing(out, pattern: #"\b[Nn] dash(es)?\b"#, with: "en dash$1", caseInsensitive: false)
     }
 
+    /// Business acronyms the recognizer spells out: "D to C" → "D2C", "B to B" → "B2B". Only these pairs, and never after
+    /// "from" ("from A to C", "from B to C" are ranges).
+    public static func spokenBusinessAcronyms(_ text: String) -> String {
+        let pairs: Set<String> = ["B2B", "B2C", "D2C", "C2C", "P2P", "B2G", "C2B"]
+        guard let pattern = TextTools.regex(#"(?<![\p{L}\p{N}])([BCDP])[ -]to[ -]([BCGP])(?![\p{L}\p{N}])"#, caseInsensitive: false) else { return text }
+        let ns = text as NSString
+        var out = text
+        for match in pattern.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
+            let acronym = ns.substring(with: match.range(at: 1)) + "2" + ns.substring(with: match.range(at: 2))
+            let before = ns.substring(to: match.range.location).lowercased()
+            guard pairs.contains(acronym), !before.hasSuffix("from "), let range = Range(match.range, in: out) else { continue }
+            out.replaceSubrange(range, with: acronym)
+        }
+        return out
+    }
+
     /// "et cetera" → "etc." (never the other way round).
     public static func shortenEtCetera(_ text: String) -> String {
         TextTools.replacing(text, pattern: #"\bet[ \t-]?cetera\b\.?"#, with: "etc.")
@@ -286,7 +302,45 @@ public struct RuleBasedCleaner: Sendable {
         "but", "so", "with", "be", "this", "they", "he", "she", "or", "if", "as", "just", "was", "are",
     ]
 
-    /// "the the" → "the", for accidental repeats of function words only.
+    /// A phrase written twice in a row is written once when nothing but a space separates the copies and either the
+    /// second copy is capitalised where the first isn't ("you can check You can check the logs": Parakeet Unified's 15 s
+    /// windows overlap by 2 s, and a copy at the seam starts with a capital) or the phrase is only little words (a restart:
+    /// "in the in the", "for the for the"). 2–10 words, compared ignoring case; the first copy stays. Across a period or
+    /// comma a repeat is usually meant ("…ends with the chart. The chart shows…", "the menu, the menu has…"), and so is
+    /// one with content words ("if we ship it we ship it today"): in 3,168 real texts those were its only false alarms.
+    public static func collapseRepeatedPhrases(_ text: String) -> String {
+        guard let wordPattern = TextTools.regex(#"[\p{L}\p{N}][\p{L}\p{N}'’]*"#) else { return text }
+        var out = text
+        for _ in 0..<20 { // each pass removes one copy; stop when nothing repeats
+            let ns = out as NSString
+            let words = wordPattern.matches(in: out, range: NSRange(location: 0, length: ns.length)).map(\.range)
+            let lower = words.map { ns.substring(with: $0).lowercased() }
+            var removal: NSRange?
+            search: for n in stride(from: min(10, words.count / 2), through: 2, by: -1) {
+                for i in 0...(words.count - 2 * n) where lower[i] == lower[i + n] && Array(lower[i..<i + n]) == Array(lower[i + n..<i + 2 * n]) {
+                    let gap = NSRange(location: words[i + n - 1].upperBound, length: words[i + n].location - words[i + n - 1].upperBound)
+                    guard ns.substring(with: gap).allSatisfy({ $0 == " " || $0 == "\t" }) else { continue }
+                    let first = ns.substring(with: words[i]), second = ns.substring(with: words[i + n])
+                    let pauseRestart = first.first?.isLowercase == true && second.first?.isUppercase == true
+                    let littleWords = lower[i..<i + n].allSatisfy(restartWords.contains) && Set(lower[i..<i + n]).count > 1
+                    guard pauseRestart || littleWords else { continue }
+                    removal = NSRange(location: words[i + n - 1].upperBound, length: words[i + 2 * n - 1].upperBound - words[i + n - 1].upperBound)
+                    break search
+                }
+            }
+            guard let removal else { break }
+            out = ns.replacingCharacters(in: removal, with: "")
+        }
+        return out
+    }
+
+    /// Little words a restart repeats without meaning to ("in the in the", "for the for the").
+    static let restartWords: Set<String> = [
+        "a", "an", "the", "this", "that", "to", "of", "for", "in", "on", "at", "with", "as", "by", "from", "and", "or", "but", "if",
+        "so", "like", "i", "you", "we", "they", "it", "he", "she", "my", "your", "our", "their", "is", "was", "be", "know", "mean",
+    ]
+
+    /// "the the" → "the", for accidental repeats of function words only; then restarted phrases.
     func collapseStutters(_ text: String) -> String {
         // Same case only ("option A, a cheaper plan" is two different words), and a comma only between longer words.
         guard let re = TextTools.regex(#"\b([\p{L}']+)(?:[ \t]*,?[ \t]+\1\b)+"#, caseInsensitive: false) else { return text }
@@ -300,7 +354,7 @@ public struct RuleBasedCleaner: Sendable {
                 out.replaceSubrange(range, with: word)
             }
         }
-        return out
+        return Self.collapseRepeatedPhrases(out)
     }
 
     func tidyWhitespaceAndPunctuation(_ text: String) -> String {

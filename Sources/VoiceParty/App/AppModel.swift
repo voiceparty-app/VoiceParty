@@ -495,7 +495,7 @@ final class AppModel {
         for note in (try? store.notes()) ?? [] where note.id != notetaker.currentNoteID { notetaker.delete(note.id) }
         let fm = FileManager.default
         try? fm.removeItem(at: Paths.audio)
-        for name in ["debug-last.json", "debug-note.json", "debug-ocr.json", "debug-mic.json"] {
+        for name in ["debug-last.json", "debug-note.json", "debug-ocr.json", "debug-mic.json", "debug-edit-watch.json", "debug-edit-test.json"] {
             try? fm.removeItem(at: Paths.appSupport.appending(path: name))
         }
         lastTranscript = nil
@@ -504,23 +504,51 @@ final class AppModel {
         reloadNotes()
     }
 
-    /// Adds words learned from the user's corrections and offers Undo.
-    func learn(_ words: [String]) {
+    /// What a correction would teach, given the dictionary as it is (nothing is changed).
+    func plannedLearning(pasted: String, edited: String, dictionary: [DictionaryEntry]? = nil) -> EditDiffLearner.Learned {
+        // Everyday English, not the spell checker, decides what's too ordinary to learn: the spell checker knows many
+        // names and every word taught to this Mac, so those corrections were never learned. It still guards
+        // replacements: a word it knows is never rewritten in later dictations.
+        let learner = EditDiffLearner(rejected: Set(settings.rejectedLearnedWords), isCommonWord: TermExtractor.isEnglishWord) { word in
+            TermExtractor.isEnglishWord(word)
+                || MainActor.assumeIsolated { NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound }
+        }
+        return learner.learn(pasted: pasted, edited: edited, dictionary: dictionary ?? self.dictionary)
+    }
+
+    /// A dictation the user corrected after it was pasted: the corrected text is kept with it in history, and what it
+    /// teaches goes into the dictionary (new words, and what the speech engine wrote → the right spelling), with Undo.
+    @discardableResult
+    func learnFromCorrection(pasted: String, edited: String, historyID: UUID?) -> EditDiffLearner.Learned {
+        if let historyID, settings.historyRetention != .neverStore {
+            try? store.setEditedText(id: historyID, text: edited)
+            reloadHistory()
+        }
+        let learned = plannedLearning(pasted: pasted, edited: edited)
         var added: [DictionaryEntry] = []
-        for word in words {
+        for word in learned.words {
             if let entry = try? store.addWordIfNew(word, source: .learned) { added.append(entry) }
         }
-        guard !added.isEmpty else { return }
+        for replacement in learned.replacements {
+            if let entry = try? store.addReplacementIfNew(replacement.from, replacement: replacement.to, source: .learned) { added.append(entry) }
+        }
+        guard !added.isEmpty else { return learned }
         reloadPersonalization()
-        let quoted = added.map { "“\($0.phrase)”" }
+        // "Tamra" → "Tamaro" says it all; the new word on its own only when nothing was replaced.
+        let replaced = Set(added.compactMap(\.replacement).map { $0.lowercased() })
+        let shown = added.filter { $0.replacement != nil || !replaced.contains($0.phrase.lowercased()) }
+        let quoted = shown.map { entry in entry.replacement.map { "“\(entry.phrase)” → “\($0)”" } ?? "“\(entry.phrase)”" }
         let names = quoted.count > 1 ? quoted.dropLast().joined(separator: ", ") + " and " + quoted.last! : quoted[0]
         dictationBar.toast("Learned \(names): it's in your dictionary now", action: "Undo", duration: 6) { [weak self] in
             guard let self else { return }
             added.forEach { try? self.store.deleteDictionaryEntry(id: $0.id) }
             // Undone words are never learned again (remembered only as fingerprints).
-            self.settings.rejectedLearnedWords += added.map { EditDiffLearner.rejectionKey($0.phrase) }
+            self.settings.rejectedLearnedWords += added.map { entry in
+                entry.replacement.map { EditDiffLearner.rejectionKey(.init(from: entry.phrase, to: $0)) } ?? EditDiffLearner.rejectionKey(entry.phrase)
+            }
             self.reloadPersonalization()
         }
+        return learned
     }
 
     func showDiffWindow() {

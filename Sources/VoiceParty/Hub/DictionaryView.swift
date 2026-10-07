@@ -57,27 +57,17 @@ struct DictionaryView: View {
                     examples: ["Priya", "Kubernetes", "Tamaro", "btw → by the way"]
                 )
 
-                HStack {
-                    Picker("", selection: $filter) {
-                        ForEach(Filter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                // One row when it fits; in a narrow window the search, sort and Select go on a second row.
+                ViewThatFits(in: .horizontal) {
+                    HStack {
+                        filterPicker
+                        Spacer(minLength: 12)
+                        searchSortSelect(searchIdealWidth: 140) // judged at 140; still widens to 220 with room
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .fixedSize()
-                    Spacer(minLength: 12)
-                    SearchField(text: $search)
-                    Picker("", selection: $sort) {
-                        ForEach(Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    VStack(alignment: .leading, spacing: 10) {
+                        filterPicker
+                        HStack { searchSortSelect() }
                     }
-                    .labelsHidden()
-                    .fixedSize()
-                    Button(selecting ? "Done" : "Select") {
-                        selecting.toggle()
-                        selected.removeAll()
-                    }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .fixedSize()
-                    .disabled(app.dictionary.isEmpty)
                 }
 
                 if selecting {
@@ -119,6 +109,31 @@ struct DictionaryView: View {
             }
         }
         .onChange(of: navigation.addNewRequested) { consumeAddRequest() }
+    }
+
+    private var filterPicker: some View {
+        Picker("", selection: $filter) {
+            ForEach(Filter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+    }
+
+    @ViewBuilder private func searchSortSelect(searchIdealWidth: CGFloat? = nil) -> some View {
+        SearchField(text: $search).frame(idealWidth: searchIdealWidth)
+        Picker("", selection: $sort) {
+            ForEach(Sort.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }
+        .labelsHidden()
+        .fixedSize()
+        Button(selecting ? "Done" : "Select") {
+            selecting.toggle()
+            selected.removeAll()
+        }
+        .buttonStyle(SecondaryButtonStyle())
+        .fixedSize()
+        .disabled(app.dictionary.isEmpty)
     }
 
     private var selectionBar: some View {

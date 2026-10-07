@@ -98,8 +98,12 @@ public struct SnippetExpander: Sendable {
 /// dictionary words that carry special casing (`linkedin → LinkedIn`).
 public struct DictionaryApplier: Sendable {
     public var entries: [DictionaryEntry]
-    /// Names eligible for sound-alike correction (worked out once; the check isn't free). Words learned
-    /// automatically don't qualify: a learned typo must never rewrite the correct word ("Anthropc").
+    /// Words that may replace a misheard or spelled-out form of themselves. A learned word qualifies only when the user
+    /// typed it over a misheard one (a learned replacement points to it): the next mishearing is often spelled
+    /// differently ("Tamarof" learned, then "Tamaroff"). Other learned words stay out, so a typo made while correcting
+    /// can't rewrite correct words ("Anthropc").
+    let nameEntries: [DictionaryEntry]
+    /// The names among them eligible for sound-alike correction (worked out once; the check isn't free).
     let soundAlikeEntries: [DictionaryEntry]
     /// Ordinary English (the app passes Apple's vocabulary; otherwise the built-in common-word list).
     let isEnglishWord: @Sendable (String) -> Bool
@@ -115,7 +119,9 @@ public struct DictionaryApplier: Sendable {
     public init(entries: [DictionaryEntry], isEnglishWord: (@Sendable (String) -> Bool)? = nil) {
         self.entries = entries.sorted { $0.phrase.count > $1.phrase.count }
         self.isEnglishWord = isEnglishWord ?? { CommonWords.contains($0.lowercased()) }
-        soundAlikeEntries = self.entries.filter { $0.replacement == nil && $0.source != .learned && SoundAlikeNames.isCandidate($0.phrase) }
+        let corrected = Set(entries.compactMap { $0.source == .learned ? $0.replacement?.lowercased() : nil })
+        nameEntries = self.entries.filter { $0.replacement == nil && ($0.source != .learned || corrected.contains($0.phrase.lowercased())) }
+        soundAlikeEntries = nameEntries.filter { SoundAlikeNames.isCandidate($0.phrase) }
     }
 
     public func apply(_ text: String) -> (text: String, replacements: Int, usedIDs: [UUID]) {
@@ -149,7 +155,7 @@ public struct DictionaryApplier: Sendable {
             used.append(entry.id)
         }
         // A name the recognizer spelled as letters ("TMRO" → "Tamaro").
-        let spelled = SpelledOutNames.apply(out, terms: entries.filter { $0.replacement == nil && $0.source != .learned }.map(\.phrase))
+        let spelled = SpelledOutNames.apply(out, terms: nameEntries.map(\.phrase))
         if !spelled.replaced.isEmpty {
             out = spelled.text
             count += spelled.replaced.count
@@ -172,7 +178,13 @@ public struct DictionaryApplier: Sendable {
             if entry.replacement == nil && (!entry.phrase.contains(where: \.isUppercase) || CommonWords.isNearCommon(entry.phrase)
                 || (!Self.hasSpecialCasing(entry.phrase) && isEnglishWord(entry.phrase.lowercased()))) { continue }
             let ns = out as NSString
-            let matches = re.matches(in: out, range: NSRange(location: 0, length: ns.length)).filter { ns.substring(with: $0.range) != target }
+            // A learned mishearing that is also an everyday word ("Sunny" → "Suni") replaces it only where it's written as a
+            // name, capitalised mid-sentence: "a sunny day" stays.
+            let asNameOnly = entry.source == .learned && entry.replacement != nil && isEnglishWord(entry.phrase.lowercased())
+            let matches = re.matches(in: out, range: NSRange(location: 0, length: ns.length)).filter {
+                ns.substring(with: $0.range) != target
+                    && (!asNameOnly || ns.substring(with: $0.range).first?.isUppercase == true && SoundAlikeNames.isMidSentence($0.range, in: ns))
+            }
             guard !matches.isEmpty else { continue }
             for match in matches.reversed() {
                 let found = ns.substring(with: match.range)
@@ -320,11 +332,16 @@ public enum DriftGuard {
             return false
         }
 
-        // A glossary term showing up more often than it was said means the model echoed the glossary.
+        // A glossary term showing up more often than it was said means the model echoed the glossary. Spelled-out forms
+        // ("KVOS" for "kivaOS") count on both sides: the term may replace one, not be added next to it.
         for term in VocabularyBuilder.relevant(vocabulary, to: input) {
             let termTokens = TextTools.normalizedTokens(term)
-            let spelledOut = SpelledOutNames.capitalTokens(in: input).filter { SpelledOutNames.matches($0.token, term: term) }.count
-            if occurrences(of: termTokens, in: outTokens) > occurrences(of: termTokens, in: inTokens) + spelledOut { return false }
+            func spelledOut(_ text: String) -> Int {
+                SpelledOutNames.capitalTokens(in: text).filter { SpelledOutNames.matches($0.token, term: term) }.count
+            }
+            if occurrences(of: termTokens, in: outTokens) + spelledOut(out) > occurrences(of: termTokens, in: inTokens) + spelledOut(input) {
+                return false
+            }
         }
         return true
     }

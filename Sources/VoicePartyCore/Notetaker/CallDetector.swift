@@ -1,12 +1,31 @@
 import Foundation
 
 /// Notices calls from which apps are using the microphone (Zoom, Teams, FaceTime…): suggests taking notes
-/// once a call has had the mic for `startDelay`, and reports the call ending once the mic has been free
-/// for `endDelay` (so a mute or a brief device switch doesn't end it).
+/// once a call has had the mic for `startDelay`, and reports the call ending once the processes that had the mic have
+/// stopped both recording and playing for `quickEndDelay`, or the mic has been free for `endDelay` whatever plays.
+///
+/// Live: Teams let go of the mic and its speaker within 20 ms when the call ended, but notes waited 20 s for the mic
+/// alone (the user stopped them by hand). A mute keeps the sound of the others playing, and a device switch restarts
+/// both within a second or two; another process of the app (Teams' web view playing the hang-up sound for ~10 s, a
+/// browser's other tabs) doesn't count.
 public struct CallDetector: Sendable {
     public enum Event: Equatable, Sendable {
         case started(app: String)
         case ended(app: String)
+    }
+
+    /// One process of a call app, as Core Audio reports it.
+    public struct AudioUse: Equatable, Sendable {
+        public var app: String
+        public var process: Int32
+        public var input: Bool
+        public var output: Bool
+        public init(app: String, process: Int32, input: Bool, output: Bool) {
+            self.app = app
+            self.process = process
+            self.input = input
+            self.output = output
+        }
     }
 
     /// Bundle ID → name for apps whose microphone use means a call.
@@ -27,19 +46,25 @@ public struct CallDetector: Sendable {
     }
 
     public var startDelay: TimeInterval
+    public var quickEndDelay: TimeInterval
     public var endDelay: TimeInterval
     private var since: [String: TimeInterval] = [:]
     private var lastSeen: [String: TimeInterval] = [:]
     private var announced: Set<String> = []
+    /// The processes that had the mic during each app's call.
+    private var micProcesses: [String: Set<Int32>] = [:]
 
-    public init(startDelay: TimeInterval = 10, endDelay: TimeInterval = 20) {
+    public init(startDelay: TimeInterval = 10, quickEndDelay: TimeInterval = 5, endDelay: TimeInterval = 20) {
         self.startDelay = startDelay
+        self.quickEndDelay = quickEndDelay
         self.endDelay = endDelay
     }
 
-    /// `usingMic`: names of call apps with the microphone on right now.
-    public mutating func observe(usingMic: Set<String>, at time: TimeInterval) -> [Event] {
+    /// `uses`: the call apps' audio processes right now.
+    public mutating func observe(_ uses: [AudioUse], at time: TimeInterval) -> [Event] {
         var events: [Event] = []
+        let usingMic = Set(uses.filter(\.input).map(\.app))
+        for use in uses where use.input { micProcesses[use.app, default: []].insert(use.process) }
         for app in usingMic {
             lastSeen[app] = time
             let start = since[app] ?? time
@@ -50,10 +75,13 @@ public struct CallDetector: Sendable {
             }
         }
         for (app, seen) in lastSeen where !usingMic.contains(app) {
-            if time - seen >= endDelay {
+            let holders = micProcesses[app] ?? []
+            let silent = !uses.contains { $0.output && holders.contains($0.process) }
+            if time - seen >= endDelay || silent && time - seen >= quickEndDelay {
                 if announced.contains(app) { events.append(.ended(app: app)) }
                 lastSeen[app] = nil
                 since[app] = nil
+                micProcesses[app] = nil
                 announced.remove(app)
             } else if !announced.contains(app) {
                 since[app] = nil // a blip before the call was confirmed: start over

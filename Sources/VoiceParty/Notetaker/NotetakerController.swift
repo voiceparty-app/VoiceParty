@@ -58,18 +58,21 @@ final class NotetakerController {
 
     var isRecording: Bool { if case .recording = state { true } else { false } }
 
-    /// Offer notes when a call starts; stop them when that call ends.
-    func watchForCalls() {
-        let started = Date()
-        callTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+    @ObservationIgnored private let callWatchStarted = Date()
+
+    /// Offer notes when a call starts; stop them when that call ends. Every 5 s, and every 2 s while recording a call
+    /// (so the notes stop a few seconds after it ends).
+    func watchForCalls(every interval: TimeInterval = 5) {
+        callTimer?.invalidate()
+        callTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, self.app.settings.suggestNotesForCalls else { return }
-                for event in self.calls.observe(usingMic: CallWatch.callAppsUsingMic(), at: Date().timeIntervalSince(started)) {
+                // Notes for a call stop with it even when call suggestions are off.
+                guard let self, self.app.settings.suggestNotesForCalls || self.callApp != nil else { return }
+                for event in self.calls.observe(CallWatch.callAudio(), at: Date().timeIntervalSince(self.callWatchStarted)) {
                     switch event {
                     case .started(let callApp) where self.state == .idle:
                         self.app.dictationBar.toast("Take notes for this \(callApp) call?", action: "Start Notetaker", duration: 12) { [weak self] in
                             self?.start(appName: callApp)
-                            self?.callApp = callApp
                         }
                     case .ended(let callApp) where self.isRecording && self.callApp == callApp:
                         Task { await self.stop(reason: "The \(callApp) call ended, so the Notetaker stopped.") }
@@ -93,6 +96,9 @@ final class NotetakerController {
 
     func start(appName: String? = nil) {
         guard state == .idle, confirmConsentOnce() else { return }
+        // Started by hand during a call: these notes are for that call (they stop when it ends, and record only its sound).
+        let detected = CallWatch.callAppsUsingMic()
+        let appName = appName ?? (detected.count == 1 ? detected.first : nil)
         var note = MeetingNote(title: appName.map { "\($0) meeting" } ?? "Meeting", startedAt: Date())
         note.appName = appName
         let folder = Self.directory.appending(path: note.id.uuidString, directoryHint: .isDirectory)
@@ -138,6 +144,8 @@ final class NotetakerController {
         let started = Date()
         state = .recording(since: started)
         app.dictationBar.notetakerStartedAt = started
+        callApp = appName
+        if appName != nil { watchForCalls(every: 2) }
         app.dictationBar.toast("Notetaker is on. Let everyone know you're taking notes.", action: "Copy message", duration: 10) { [weak self] in
             self?.app.dictation.inserter.copy(NotetakerConsent.message)
             self?.app.dictationBar.toast("Message copied: paste it into the call's chat", duration: 3)
@@ -395,6 +403,7 @@ final class NotetakerController {
             app.modelServer.release(.meeting)
             holdingModel = false
         }
+        if callApp != nil { watchForCalls() }
         callApp = nil
         calendarTitle = nil
         userNotes = ""

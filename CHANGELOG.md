@@ -2,6 +2,20 @@
 
 What changed in each VoiceParty release. VoiceParty checks for updates once a day and offers new versions on its own.
 
+## 0.1.3 — 2026-10-07
+
+Your corrections are finally learned, dictionary names come out right far more often, and questions get their question marks.
+
+### What's new
+
+- **Learning from your corrections works:** it never kicked in before. Fix a misheard word after dictating, even a name that's already in your dictionary, and VoiceParty learns the word and what it was misheard as (even another real name, like "Steven" for Stephen, or an ordinary word, which is then fixed only where it's written as a name), so the next dictation gets it right, even when a name is misheard a different way. A message shows what it learned, with Undo, and a fix made just before pressing Enter counts too.
+- **Dictionary names come out right more often:** names the speech engine didn't know are matched to your dictionary by how they sound, not only how they're spelled ("Ben Lotavi" becomes Ben Holtavi, "KVOS" kivaOS, "Grat CN" Gradcn), and a name that sounds like an ordinary word is used when it's written as a name mid-sentence ("Endeavor" becomes Andevor, while the word "endeavor" stays). In two weeks of our own dictations, dictionary names came out right 93% of the time instead of 69%, with no wrong replacements.
+- **Question marks and sentence breaks:** questions the speech engine ended with a period now get a "?" ("What can we do to solve this?"); where it forgot to end a sentence ("…correct And what would you…") the break comes back ("…correct? And what would you…?"); and a stray capital mid-sentence ("to Solve this") is fixed, even when no AI cleanup runs. "D to C" and "B to B" are written D2C and B2B.
+- **Narrow windows:** the main window no longer shrinks past a width where pages break (800 points); Home, Insights and Dictionary rearrange to fit narrower windows instead of squeezing, and the usage bars in Insights line up.
+- **Cleaner history:** hovering a dictation shows play, copy and "…" in their own space instead of covering the text; its details (app, length, AI cleanup) are under "…".
+- **Notetaker stops when the call ends:** within a few seconds instead of 20 or more, and also when you started it by hand during the call. A mute or switching headphones doesn't stop it.
+- **Fixed:** a phrase could appear twice, like "you can check You can check the logs", where the speech engine joins its 15-second windows in a longer dictation or meeting transcript. Restarts like "in the in the" are written once too.
+
 ## 0.1.2 — 2026-09-28
 
 A mode for English as a second language, fewer dropped words, meeting notes that know whose task is whose, and lower energy use.

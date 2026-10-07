@@ -3,6 +3,8 @@ import VoicePartyCore
 
 struct InsightsView: View {
     @Bindable var app: AppModel
+    /// The page's content width: in a narrow window the usage and streak cards stack, each at full width.
+    @State private var width: CGFloat = 800
 
     var body: some View {
         ScrollView {
@@ -39,24 +41,16 @@ struct InsightsView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
-                HStack(alignment: .top, spacing: 16) {
+                (width >= 640 ? AnyLayout(HStackLayout(alignment: .top, spacing: 16)) : AnyLayout(VStackLayout(spacing: 16))) {
                     Card(fillsHeight: true) {
                         VStack(alignment: .leading, spacing: 14) {
-                            HStack {
-                                Text("Usage by app").font(Theme.display(22))
-                                Spacer()
-                                Text("APPS USED | \(app.stats.appsUsed)").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                            }
+                            CardHeader(title: "Usage by app", detail: "APPS USED | \(app.stats.appsUsed)")
                             CategoryBars(stats: app.stats)
                         }
                     }
                     Card(fillsHeight: true) {
                         VStack(alignment: .leading, spacing: 14) {
-                            HStack {
-                                Text("\(app.stats.dayStreak) day streak").font(Theme.display(22))
-                                Spacer()
-                                Text("LONGEST | \(app.stats.longestStreak) DAYS").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                            }
+                            CardHeader(title: "\(app.stats.dayStreak) day streak", detail: "LONGEST | \(app.stats.longestStreak) DAYS")
                             StreakHeatmap(wordsByDay: app.stats.wordsByDay)
                         }
                     }
@@ -64,6 +58,7 @@ struct InsightsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             .hubPageLayout()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         }
     }
 
@@ -103,23 +98,52 @@ private struct SpeedGauge: View {
     }
 }
 
+/// A card's title with a small detail on the right, or under it when the card is too narrow for one line.
+private struct CardHeader: View {
+    var title: String
+    var detail: String
+
+    var body: some View {
+        let titleText = Text(title).font(Theme.display(22)).lineLimit(1)
+        let detailText = Text(detail).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).lineLimit(1)
+        ViewThatFits(in: .horizontal) {
+            HStack { titleText; Spacer(minLength: 12); detailText }
+            VStack(alignment: .leading, spacing: 4) { titleText; detailText }
+        }
+    }
+}
+
 private struct CategoryBars: View {
     var stats: UsageStats
 
     var body: some View {
         let total = max(1, stats.countByCategory.values.reduce(0, +))
         let rows = AppCategory.allCases.map { ($0, stats.countByCategory[$0] ?? 0) }.sorted { $0.1 > $1.1 }
-        VStack(spacing: 10) {
+        // Every bar the same width: the widest of these that leaves every label whole (bars give way before labels
+        // do in a narrow card; bars that flexed row by row came out different lengths).
+        ViewThatFits(in: .horizontal) {
+            bars(rows, total: total, width: 150, wholeLabels: true)
+            bars(rows, total: total, width: 120, wholeLabels: true)
+            bars(rows, total: total, width: 90, wholeLabels: true)
+            bars(rows, total: total, width: 70, wholeLabels: false)
+        }
+    }
+
+    private func bars(_ rows: [(AppCategory, Int)], total: Int, width: CGFloat, wholeLabels: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(rows, id: \.0) { category, count in
                 HStack(spacing: 10) {
                     let pct = Int((Double(count) / Double(total) * 100).rounded())
                     ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4).fill(Theme.accentSoft).frame(width: 150, height: 22)
-                        RoundedRectangle(cornerRadius: 4).fill(Theme.accent).frame(width: max(30, 150 * Double(count) / Double(total)), height: 22)
+                        RoundedRectangle(cornerRadius: 4).fill(Theme.accentSoft)
+                        RoundedRectangle(cornerRadius: 4).fill(Theme.accent).frame(width: max(30, width * Double(count) / Double(total)))
                         Text("\(pct)%").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white).padding(.leading, 6)
                     }
+                    .frame(width: width, height: 22)
                     Text("\(count.formatted()) \(category.displayName.uppercased())").font(.system(size: 12, weight: .medium))
-                    Spacer()
+                        .lineLimit(1).truncationMode(.tail)
+                        .fixedSize(horizontal: wholeLabels, vertical: false)
+                    Spacer(minLength: 0)
                 }
             }
         }

@@ -47,7 +47,8 @@ final class WindowCoordinator {
         if hubWindow == nil {
             let window = makeWindow(title: "VoiceParty", size: NSSize(width: 1120, height: 740),
                                     root: HubView(app: app, navigation: navigation))
-            window.minSize = NSSize(width: 900, height: 600)
+            // The minimum comes from HubView's own minimum frame (the hosting view sets the window's minimum from its
+            // content and resets any set here; before, Home's tiny minimum let the window squeeze the pages).
             window.setFrameAutosaveName("VoicePartyHub")
             hubWindow = window
         }
